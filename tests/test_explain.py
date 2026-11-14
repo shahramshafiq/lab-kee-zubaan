@@ -41,6 +41,12 @@ def test_invented_number_is_rejected(p004):
     assert out["explanation"]["source"] == "rules"
 
 
+def test_number_written_another_way_is_fine(p004):
+    ok = json.loads(good_answer())
+    ok["tests"]["Platelet Count"] = "Platelets are low: 120,000 (about 120 thousand), the normal start is 150,000."
+    assert check_text(ok, p004) is None
+
+
 def test_diagnosis_is_rejected(p004):
     bad = json.loads(good_answer())
     bad["tests"]["Hemoglobin"] = "You have anemia."

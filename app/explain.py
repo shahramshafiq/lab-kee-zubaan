@@ -7,6 +7,7 @@ import copy
 import json
 import logging
 import re
+from decimal import Decimal
 from typing import Callable, Dict, List, Optional, Set
 
 from app import llm
@@ -22,8 +23,10 @@ SYSTEM = (
     "never say the person has a disease or condition; say what a test measures and what a low or high value CAN mean in "
     "general; remind that only a licensed doctor can diagnose; if a value is urgent, say clearly to see a doctor today; "
     "if something could not be classified or a range could not be chosen, say so and do not guess. "
-    "Return ONLY a JSON object: {\"summary\": string, \"tests\": {\"<test name>\": string}, \"questions\": [string]} "
-    "with 3 to 5 questions for the doctor, based on the results that are not normal."
+    "Return ONLY a JSON object: {\"summary\": string, \"voice\": string, \"tests\": {\"<test name>\": string}, "
+    "\"questions\": [string]} with 3 to 5 questions for the doctor, based on the results that are not normal. "
+    "\"voice\" is a spoken version of the summary for an older person: at most 45 words, very short sentences, "
+    "no tables, say the urgent warning first if there is one."
 )
 
 # phrases that sound like a diagnosis
@@ -52,22 +55,33 @@ def _facts(analysis: Dict) -> List[Dict]:
     return facts
 
 
+def _norm(n: str) -> str:
+    """'6.50' and '6.5' are the same number; '120000' stays '120000'."""
+    return format(Decimal(n).normalize(), "f")
+
+
 def allowed_numbers(analysis: Dict) -> Set[str]:
-    """Every number that may appear in the explanation."""
+    """Every number that may appear in the explanation (also '120' for 120000, as in '120 thousand')."""
     blob = json.dumps(_facts(analysis)) + json.dumps(analysis["patient"]) + " 3 4 5 1 2"
-    return set(re.findall(r"\d+(?:\.\d+)?", blob))
+    found = {_norm(n) for n in re.findall(r"\d+(?:\.\d+)?", blob)}
+    for n in list(found):
+        if Decimal(n) >= 1000:
+            found.add(_norm(str(Decimal(n) / 1000)))
+    return found
 
 
 def check_text(data: Dict, analysis: Dict) -> Optional[str]:
     """Return a problem description, or None when the text is safe to show."""
-    texts = [data.get("summary", "")] + list(data.get("tests", {}).values()) + list(data.get("questions", []))
+    texts = ([data.get("summary", ""), data.get("voice", "")] + list(data.get("tests", {}).values())
+             + list(data.get("questions", [])))
     allowed = allowed_numbers(analysis)
     for t in texts:
         t = str(t).translate(_DIGITS)
+        t = re.sub(r"(?<=\d),(?=\d{3})", "", t)  # 120,000 -> 120000
         if DIAGNOSIS.search(t):
             return "sounds like a diagnosis"
         for n in re.findall(r"\d+(?:\.\d+)?", t):
-            if n not in allowed and n.rstrip("0").rstrip(".") not in allowed:
+            if _norm(n) not in allowed:
                 return f"number {n} is not in the facts"
     if analysis["summary"]["urgent"] and not re.search(r"doctor", data.get("summary", ""), re.I):
         return "urgent result without a doctor warning"
@@ -98,11 +112,29 @@ def rules_summary(analysis: Dict) -> str:
     return " ".join(parts)
 
 
+def rules_voice(analysis: Dict) -> str:
+    """A very short spoken summary written by code."""
+    results = analysis["results"]
+    normal = sum(1 for f in results if f["status"] == "normal")
+    parts = []
+    if analysis["summary"]["urgent"]:
+        parts.append("Important. One result is at a dangerous level. Please see a doctor today.")
+    parts.append(f"{normal} of {len(results)} results are normal.")
+    odd = [f["test"] + " is " + f["status"] for f in results if f["status"] in ("low", "high")]
+    if odd:
+        parts.append("; ".join(odd[:3]) + ".")
+    if analysis["summary"]["needs"]:
+        parts.append("I need the patient's " + " and ".join(analysis["summary"]["needs"]) + " to check some results.")
+    parts.append("Only a doctor can diagnose. Please show this report to your doctor.")
+    return " ".join(parts)
+
+
 def explain(analysis: Dict, language: str = "en", use_ai: bool = True,
             asker: Callable = llm.ask) -> Dict:
     """Return the analysis with an 'explanation' block. Never raises: falls back to the rules text."""
     fallback = {
         "summary": rules_summary(analysis),
+        "voice": rules_voice(analysis),
         "tests": {f["test"]: " ".join(x for x in (f["what_it_measures"], f["what_it_can_mean"], f["reason"]) if x)
                   for f in analysis["results"]},
         "questions": analysis["questions_for_doctor"],
@@ -118,13 +150,20 @@ def explain(analysis: Dict, language: str = "en", use_ai: bool = True,
                   f"Patient: {json.dumps(deidentify(analysis)['patient'])}\n"
                   f"Facts (already checked by the lab's rules, do not change them):\n"
                   f"{json.dumps(_facts(analysis), indent=1)}")
-        data = llm.ask_json(SYSTEM, prompt, _valid_shape, asker=asker)
-        problem = check_text(data, analysis)
+        data, problem = None, None
+        for attempt in range(2):  # one more try, telling the model what was wrong
+            extra = f"\n\nYour previous answer was rejected because: {problem}. Fix that and answer again." if problem else ""
+            data = llm.ask_json(SYSTEM, prompt + extra, _valid_shape, asker=asker)
+            problem = check_text(data, analysis)
+            if not problem:
+                break
+            log.warning("AI text rejected (attempt %d): %s", attempt + 1, problem)
         if problem:
-            log.warning("AI text rejected: %s", problem)
             out["explanation"] = fallback
             return out
         data["source"], data["language"] = "ai", language
+        if not isinstance(data.get("voice"), str) or not data["voice"].strip():
+            data["voice"] = fallback["voice"]
         # make sure every test has a sentence, even if the model skipped one
         for f in analysis["results"]:
             data["tests"].setdefault(f["test"], fallback["tests"].get(f["test"], ""))
