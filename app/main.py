@@ -1,0 +1,144 @@
+"""Web API. Thin routes only: all decisions are made in engine.py."""
+import logging
+import uuid
+from pathlib import Path
+from typing import Dict, Optional
+
+from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
+
+from app import chat, config
+from app.engine import analyze
+from app.explain import explain
+from app.extract import Patient, parse_report
+from app.knowledge import KnowledgeBase, load_kb
+from app.logging_setup import setup_logging
+
+setup_logging()
+log = logging.getLogger("app")
+
+app = FastAPI(title="Lab Kee Zubaan", version="0.1")
+KB: KnowledgeBase = load_kb(config.DATA_DIR)
+NAMES = chat.other_patient_names(config.DATA_DIR)
+SESSIONS: Dict[str, Dict] = {}
+MAX_SESSIONS = 500
+MAX_CHARS = 200_000
+
+
+class AnalyzeRequest(BaseModel):
+    report_text: Optional[str] = Field(None, max_length=MAX_CHARS)
+    report_id: Optional[str] = Field(None, description="for example P004, one of the lab's own reports")
+    age: Optional[int] = Field(None, ge=0, le=120)
+    sex: Optional[str] = None
+    language: str = "en"
+    use_ai: bool = True
+
+
+class ChatRequest(BaseModel):
+    session_id: str
+    message: str = Field(..., min_length=1, max_length=2000)
+    language: str = "en"
+
+
+def _find_report(report_id: str) -> Path:
+    for path in sorted(Path(config.DATA_DIR).glob("report_*.md")):
+        if path.name.upper().startswith(f"REPORT_{report_id.upper()}"):
+            return path
+    raise HTTPException(404, f"No report with id {report_id}")
+
+
+def _run(patient: Patient, language: str, use_ai: bool) -> Dict:
+    result = explain(analyze(patient, KB), language=language, use_ai=use_ai)
+    if len(SESSIONS) >= MAX_SESSIONS:
+        SESSIONS.pop(next(iter(SESSIONS)))
+    session_id = uuid.uuid4().hex
+    SESSIONS[session_id] = {"patient": patient, "analysis": result}
+    result["session_id"] = session_id
+    return result
+
+
+def _apply_overrides(patient: Patient, age: Optional[int], sex: Optional[str]) -> None:
+    """Age or sex given by the user (not by the report). The result says so."""
+    if age is not None and patient.age is None:
+        patient.age, patient.age_raw = age, f"{age} (given by the user)"
+    if sex and patient.sex is None:
+        s = sex.strip().lower()
+        if s in ("male", "female"):
+            patient.sex, patient.sex_raw = s, f"{s} (given by the user)"
+
+
+@app.get("/api/health")
+def health():
+    return {"ok": True, "ranges": len(KB.ranges), "urgent_rules": len(KB.urgent)}
+
+
+@app.get("/api/demo-reports")
+def demo_reports():
+    """The lab's own sample reports, for trying the tool. Names are not listed."""
+    out = []
+    for path in sorted(Path(config.DATA_DIR).glob("report_*.md")):
+        parts = path.stem.split("_")
+        out.append({"id": parts[1], "hint": " ".join(parts[3:]) or "report"})
+    return out
+
+
+@app.post("/api/analyze")
+def analyze_report(req: AnalyzeRequest):
+    if req.report_text:
+        text, source = req.report_text, "pasted report"
+    elif req.report_id:
+        path = _find_report(req.report_id)
+        text, source = path.read_text(encoding="utf-8"), path.name
+    else:
+        raise HTTPException(400, "Send report_text or report_id.")
+    patient = parse_report(text, source)
+    if not patient.results:
+        raise HTTPException(422, "I could not find any test results in this report.")
+    _apply_overrides(patient, req.age, req.sex)
+    return _run(patient, req.language, req.use_ai)
+
+
+@app.post("/api/analyze-file")
+async def analyze_file(file: UploadFile = File(...), language: str = "en", use_ai: bool = True):
+    raw = await file.read()
+    if len(raw) > 1_000_000:
+        raise HTTPException(413, "File is too big (limit 1 MB).")
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        raise HTTPException(415, "Please upload a text or markdown report (.txt or .md).")
+    patient = parse_report(text, file.filename or "upload")
+    if not patient.results:
+        raise HTTPException(422, "I could not find any test results in this file.")
+    return _run(patient, language, use_ai)
+
+
+@app.post("/api/chat")
+def chat_with_report(req: ChatRequest):
+    session = SESSIONS.get(req.session_id)
+    if not session:
+        raise HTTPException(404, "This conversation has expired. Please upload the report again.")
+    patient: Patient = session["patient"]
+    # an answer to "please tell me your age or sex" updates the report and re-checks the results
+    age, sex = chat.parse_demographics(req.message)
+    needs = session["analysis"]["summary"]["needs"]
+    if needs and ((age and "age" in needs) or (sex and "sex" in needs)):
+        _apply_overrides(patient, age, sex)
+        updated = explain(analyze(patient, KB), language=req.language, use_ai=True)
+        updated["session_id"] = req.session_id
+        session["analysis"] = updated
+        return {"answer": "Thank you. I used what you told me (marked as given by you, not from the report) "
+                          "and checked the results again.", "refused": False, "source": "rules",
+                "analysis": updated}
+    return chat.answer(req.message, session["analysis"], NAMES, req.language)
+
+
+STATIC = Path(__file__).resolve().parent.parent / "static"
+if STATIC.exists():
+    app.mount("/static", StaticFiles(directory=STATIC), name="static")
+
+    @app.get("/")
+    def home():
+        return FileResponse(STATIC / "index.html")
