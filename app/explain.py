@@ -40,6 +40,7 @@ DIAGNOSIS = re.compile(
     r"\b(?:you|patient|he|she)\s+(?:(?:may|might|could|probably|likely|definitely)\s+)?"
     r"(?:have|has|are|is|suffer(?:s|ing)? from|(?:do not|don't) have)\s+(?:\w+\s+){0,2}" + _DISEASES
     + r"|\b(?:diagnosed with|diagnosis of|suffering from)\b"
+    + r"|\b(?:liver|jigar|gurda|kidney|dil|thyroid)\b.{0,15}\b(?:masla|takleef|bimari|kharabi)\b"
     + r"|\b(?:aap\s*ko|aapko|mareez\s+ko)\b.{0,25}\b(?:diabetes|anemia|anaemia|hepatitis|jaundice|cancer|infection)\b.{0,12}\bhai\b"
     + "|آپ کو.{0,25}(?:ذیابیطس|خون کی کمی|یرقان|ہیپاٹائٹس|کینسر).{0,12}ہے",
     re.I)

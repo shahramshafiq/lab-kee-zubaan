@@ -67,6 +67,7 @@ def test_harmless_you_have_is_allowed_but_disease_claims_are_not(p004):
     ok["summary"] = "You have a low platelet count at 120000. Low hemoglobin can mean anemia. See a doctor today."
     assert check_text(ok, p004) is None  # naming a possible cause in general is fine
     for bad_text in ("You may have anemia.", "Aap ko diabetes hai.", "He is suffering from jaundice.",
+                     "Liver mein kuch masla ho sakta hai.",
                      "آپ کو یرقان ہے"):
         bad = json.loads(good_answer())
         bad["tests"]["Hemoglobin"] = bad_text
