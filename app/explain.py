@@ -209,7 +209,7 @@ def explain(analysis: Dict, language: str = "en", use_ai: bool = True,
     The spoken summary is always the rules text: it is known at once, so the voice can be prepared early."""
     fallback = rules_explanation(analysis, language)
     out = dict(analysis)
-    if not use_ai:
+    if not use_ai or language == "ur":  # Urdu text is written by checked rules: always correct, and instant
         out["explanation"] = fallback
         return out
     cache_key = hashlib.sha1((json.dumps(_facts(analysis), sort_keys=True) + "|" + language).encode()).hexdigest()

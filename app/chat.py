@@ -1,5 +1,8 @@
 """Follow-up questions about ONE report. The conversation is locked to that report (lab safety rule 1)."""
+import hashlib
+from collections import OrderedDict
 import json
+import os
 import logging
 import re
 from app.plain import plain_for
@@ -88,8 +91,9 @@ def fallback_answer(question: str, analysis: Dict) -> str:
     for f in analysis["results"]:
         names = {f["test"].lower(), f["test_as_written"].lower()}
         if any(n in q for n in names):
+            reason = re.sub(r"\bin [\w.]+\.md[^.]*", "set by the lab's rules", f["reason"] or "")  # no file names in a spoken answer
             parts = [f"{f['test']}: {f['status'].replace('_', ' ')}.", f["what_it_measures"], f["what_it_can_mean"],
-                     f["reason"]]
+                     reason]
             return " ".join(p for p in parts if p) + " Only a licensed doctor can diagnose."
     return analysis.get("explanation", {}).get("summary", "") or "Please ask about one of the tests in your report."
 
@@ -129,7 +133,7 @@ def _drain(buffer: str, first: bool):
     return ready, rest
 
 
-def answer_stream(question: str, analysis: Dict, all_names: Set[str], language: str = "en", voice: bool = True):
+def _answer_stream(question: str, analysis: Dict, all_names: Set[str], language: str = "en", voice: bool = True):
     """Yield events as the answer is written: {'type': 'sentence'|'replace'|'final'|'done', ...}.
     Every finished sentence is checked (no invented numbers, no diagnosis, no wrong names) BEFORE it is sent on to be
     spoken. If a sentence fails, the rest is dropped and the safe rules answer replaces everything."""
@@ -194,6 +198,31 @@ def answer_stream(question: str, analysis: Dict, all_names: Set[str], language: 
         yield safe(fallback_answer(question, analysis), "rules")
         return
     yield {"type": "done", "answer": " ".join(sentences), "source": "ai", "refused": False}
+
+
+CACHE_ON = os.getenv("CHAT_CACHE", "1") != "0"
+_STREAM_CACHE: "OrderedDict[str, list]" = OrderedDict()  # finished, checked answers: the same question again is instant
+
+
+def answer_stream(question: str, analysis: Dict, all_names: Set[str], language: str = "en", voice: bool = True):
+    """Same events as _answer_stream. A finished answer (checked AI answer or fixed safe reply) is remembered for the same
+    facts, question, language and voice mode, so asking it again starts at once and says the same thing."""
+    key = hashlib.sha1((json.dumps(_facts(analysis), sort_keys=True) + "|" + question.strip().lower() + "|" + language
+                        + "|" + str(voice) + "|" + str(id(llm.stream_ask))).encode("utf-8")).hexdigest()
+    if CACHE_ON and key in _STREAM_CACHE:
+        _STREAM_CACHE.move_to_end(key)
+        observability.count("chat_cache_hit")
+        yield from _STREAM_CACHE[key]
+        return
+    events = []
+    for event in _answer_stream(question, analysis, all_names, language, voice):
+        events.append(event)
+        yield event
+    last = events[-1] if events else {}
+    if CACHE_ON and last.get("type") == "done" or (last.get("type") == "final" and last.get("source") == "rules" and last.get("refused")):
+        _STREAM_CACHE[key] = events
+        while len(_STREAM_CACHE) > 200:
+            _STREAM_CACHE.popitem(last=False)
 
 
 def _answer_if_blocked(question: str, analysis: Dict, all_names: Set[str], language: str = "en"):

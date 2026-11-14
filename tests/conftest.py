@@ -1,3 +1,7 @@
+import os
+
+os.environ["CHAT_CACHE"] = "0"  # tests use stand-in AI answers: never reuse a remembered one
+
 """Runs before every test file: tests never call a real AI or speech service."""
 import os
 
