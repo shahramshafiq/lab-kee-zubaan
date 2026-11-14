@@ -29,14 +29,20 @@ def _settings():
         "order": _env_list("PROVIDER_ORDER", "groq,gemini"),
         "timeout": float(os.getenv("REQUEST_TIMEOUT_SECONDS", "25")),
         "retries": int(os.getenv("MAX_RETRIES", "2")),
+        # one question never waits longer than this in total, then the rules text is used
+        "deadline": time.monotonic() + float(os.getenv("LLM_DEADLINE_SECONDS", "22")),
     }
 
 
-def _post(url: str, headers: dict, body: dict, timeout: float, retries: int) -> Optional[dict]:
+def _post(url: str, headers: dict, body: dict, timeout: float, retries: int, deadline: float) -> Optional[dict]:
     """POST with retries. Returns parsed JSON, or None when this model should be skipped."""
     for attempt in range(retries + 1):
+        remaining = deadline - time.monotonic()
+        if remaining <= 1:
+            log.warning("AI deadline reached, giving up on this question")
+            return None
         try:
-            r = httpx.post(url, headers=headers, json=body, timeout=timeout)
+            r = httpx.post(url, headers=headers, json=body, timeout=min(timeout, remaining))
         except (httpx.TimeoutException, httpx.TransportError):
             log.warning("AI call timed out or failed to connect (attempt %d)", attempt + 1)
         else:
@@ -65,7 +71,7 @@ def _openai_compatible(prefix: str, system: str, user: str, cfg: dict) -> Option
             {"Authorization": f"Bearer {key}"},
             {"model": model, "temperature": 0.2,
              "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]},
-            cfg["timeout"], cfg["retries"],
+            cfg["timeout"], cfg["retries"], cfg["deadline"],
         )
         if data:
             try:
@@ -87,7 +93,7 @@ def _gemini(system: str, user: str, cfg: dict) -> Optional[str]:
             {"systemInstruction": {"parts": [{"text": system}]},
              "contents": [{"role": "user", "parts": [{"text": user}]}],
              "generationConfig": {"temperature": 0.2}},
-            cfg["timeout"], cfg["retries"],
+            cfg["timeout"], cfg["retries"], cfg["deadline"],
         )
         if data:
             try:

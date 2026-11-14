@@ -12,6 +12,15 @@ from app.knowledge import load_kb
 DATA = config.DATA_DIR
 
 
+@pytest.fixture(autouse=True)
+def fresh_cache():
+    """Each test starts with an empty explanation cache, so one test cannot answer for another."""
+    from app import explain as explain_module
+
+    explain_module._CACHE.clear()
+    yield
+
+
 @pytest.fixture(scope="module")
 def p004():
     kb = load_kb(DATA)

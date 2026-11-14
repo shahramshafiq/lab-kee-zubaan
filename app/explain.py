@@ -4,15 +4,18 @@ The engine decides the facts. The AI only writes the sentences, and a checker th
 contains a number that is not in the facts or sounds like a diagnosis. Then we use the plain fallback words.
 """
 import copy
+import hashlib
 import json
 import logging
 import re
+from collections import OrderedDict
 from decimal import Decimal
 from typing import Callable, Dict, List, Optional, Set
 
-from app import llm
+from app import llm, observability
 
 log = logging.getLogger(__name__)
+_CACHE: "OrderedDict[str, Dict]" = OrderedDict()  # checked AI explanations, keyed by facts and language
 
 LANGUAGES = {"en": "simple English", "roman_urdu": "simple Roman Urdu (Urdu written in English letters)",
              "ur": "simple Urdu (in Urdu script)"}
@@ -158,6 +161,12 @@ def explain(analysis: Dict, language: str = "en", use_ai: bool = True,
     if not use_ai:
         out["explanation"] = fallback
         return out
+    cache_key = hashlib.sha1((json.dumps(_facts(analysis), sort_keys=True) + "|" + language).encode()).hexdigest()
+    if cache_key in _CACHE:  # same checked facts in the same language: same words, instantly
+        _CACHE.move_to_end(cache_key)
+        observability.count("explain_cache_hit")
+        out["explanation"] = _CACHE[cache_key]
+        return out
     try:
         prompt = (f"Write in {LANGUAGES.get(language, LANGUAGES['en'])}.\n"
                   f"Patient: {json.dumps(deidentify(analysis)['patient'])}\n"
@@ -181,7 +190,11 @@ def explain(analysis: Dict, language: str = "en", use_ai: bool = True,
         for f in analysis["results"]:
             data["tests"].setdefault(f["test"], fallback["tests"].get(f["test"], ""))
         out["explanation"] = data
+        _CACHE[cache_key] = data
+        while len(_CACHE) > 256:
+            _CACHE.popitem(last=False)
     except llm.LLMUnavailable as exc:
         log.warning("Using rules text instead of AI: %s", exc)
+        observability.count("ai_fallback_to_rules")
         out["explanation"] = fallback
     return out
