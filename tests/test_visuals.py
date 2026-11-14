@@ -34,7 +34,10 @@ def test_welcome_can_never_trap_the_user():
     assert 'id="enter"' in html and "prefers-reduced-motion" in html
     assert "prefers-reduced-motion" in read("intro.css") and "prefers-reduced-motion" in read("night.css")
     js = read("intro.js")
-    assert "4200" in js and "lz-intro" in js  # auto-opens, and only shows once per visit
+    assert "4200" in js  # opens by itself after a few seconds
+    # the welcome shows on every visit (the user asked for this), also with reduced motion (as a soft fade)
+    assert "sessionStorage" not in html and "sessionStorage" not in js
+    assert "intro-reduced" in html and "intro-reduced" in read("intro.css")
 
 
 def test_light_cards_on_the_dark_page_set_their_own_dark_text():
