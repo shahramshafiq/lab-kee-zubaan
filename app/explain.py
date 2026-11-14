@@ -62,6 +62,8 @@ def _facts(analysis: Dict) -> List[Dict]:
             "test": f["test"], "status": f["status"], "value": f["value_as_written"], "unit": f["unit_as_written"],
             "converted_to": f["conversion"], "normal_range": f["range_used"], "urgent_rule": f["urgent_rule"],
             "reason": f["reason"], "ask_for": f["ask"],
+            # general, non-diagnostic words the lab tool already holds for this test
+            "plain": {"measures": f.get("what_it_measures", ""), "what_low_or_high_can_mean": f.get("what_it_can_mean", "")},
         })
     return facts
 

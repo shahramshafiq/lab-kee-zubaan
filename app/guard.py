@@ -7,7 +7,7 @@ from typing import Dict, Optional
 
 DIAGNOSIS_ASK = re.compile(
     r"\b(do i have|am i (diabetic|anemic|anaemic|sick|ill|dying)|do i suffer|what (disease|illness|condition) do i|"
-    r"is it (cancer|diabetes|hepatitis|serious|dangerous)|diagnose me|what is wrong with me|which disease|"
+    r"is it (cancer|diabetes|hepatitis)|diagnose me|what is wrong with me|which disease|"
     r"mujhe .{0,30}(hai kya|to nahi)|kya mujhe|meri bimari|mujhe kya bimari)\b"
     r"|کیا مجھے|میری بیماری", re.I)
 
