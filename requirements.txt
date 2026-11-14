@@ -7,3 +7,5 @@ python-multipart
 edge-tts
 pypdf
 num2words
+openpyxl
+rapidocr-onnxruntime

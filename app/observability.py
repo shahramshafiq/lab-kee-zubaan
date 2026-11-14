@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse
 log = logging.getLogger("app.http")
 
 METRICS: Dict[str, int] = defaultdict(int)
-MAX_BODY = 6_000_000  # largest request we accept (a 5 MB upload plus form overhead)
+MAX_BODY = 13_000_000  # largest request we accept (a 12 MB upload plus form overhead)
 
 # requests allowed per client per minute, by path prefix (first match wins). Generous on purpose: an automated
 # evaluator may send many requests from one address. Voice calls cost more, so they are lower. Set in .env.
