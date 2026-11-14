@@ -154,6 +154,79 @@ def ask(system: str, user: str, fast: bool = False) -> str:
     raise LLMUnavailable("The AI writer is not available right now.")
 
 
+def _stream_openai(prefix: str, system: str, user: str, cfg: dict, fast: bool):
+    """Yield the text of an OpenAI-style (Groq) answer piece by piece as the model writes it."""
+    key = os.getenv(f"{prefix}_API_KEY", "")
+    if not key:
+        return
+    base = os.getenv(f"{prefix}_BASE_URL", "https://api.groq.com/openai/v1").rstrip("/")
+    for model in _models(prefix, fast, "openai/gpt-oss-120b,openai/gpt-oss-20b", "openai/gpt-oss-20b,openai/gpt-oss-120b"):
+        label = f"{prefix.lower()}:{model}"
+        body = {"model": model, "temperature": 0.2, "stream": True, "stream_options": {"include_usage": True},
+                "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]}
+        if "gpt-oss" in model:
+            body["reasoning_effort"] = os.getenv("REASONING_EFFORT", "low")
+        remaining = cfg["deadline"] - time.monotonic()
+        if remaining <= 1:
+            return
+        started, got_any, last_usage = time.monotonic(), False, None
+        try:
+            with client().stream("POST", f"{base}/chat/completions", headers={"Authorization": f"Bearer {key}"},
+                                 json=body, timeout=min(cfg["timeout"], remaining)) as r:
+                if r.status_code != 200:
+                    usage.record_error(label)
+                    log.warning("AI stream refused (%s), status %d", label, r.status_code)
+                    continue
+                for line in r.iter_lines():
+                    if not line.startswith("data: "):
+                        continue
+                    payload = line[6:]
+                    if payload == "[DONE]":
+                        break
+                    try:
+                        chunk = json.loads(payload)
+                    except ValueError:
+                        continue
+                    if chunk.get("usage"):
+                        last_usage = chunk
+                    for choice in chunk.get("choices") or []:
+                        piece = (choice.get("delta") or {}).get("content")
+                        if piece:
+                            got_any = True
+                            yield piece
+        except (httpx.TimeoutException, httpx.TransportError):
+            usage.record_error(label)
+            log.warning("AI stream %s broke off", label)
+            if got_any:
+                return  # a partial answer: the caller keeps the finished sentences
+            continue
+        if got_any:
+            usage.record(label, last_usage or {}, time.monotonic() - started)
+            return
+
+
+def stream_ask(system: str, user: str, fast: bool = False):
+    """Yield the answer text as it is written (a generator of strings). If streaming is not possible the whole
+    answer comes as one piece. Raises LLMUnavailable when nothing could answer."""
+    if usage.budget_left() <= 0:
+        raise LLMUnavailable("The AI writer is resting for now.")
+    cfg = _settings()
+    for name in cfg["order"]:
+        produced = False
+        if name in ("groq", "openrouter"):
+            for piece in _stream_openai(name.upper(), system, user, cfg, fast):
+                produced = True
+                yield piece
+        elif name == "gemini":
+            text = _gemini(system, user, cfg, fast)
+            if text:
+                produced = True
+                yield text
+        if produced:
+            return
+    raise LLMUnavailable("The AI writer is not available right now.")
+
+
 def warm_up() -> bool:
     """Open the connection to the first provider ahead of time, so the first real question is not slower."""
     for name in _env_list("PROVIDER_ORDER", "groq,gemini"):

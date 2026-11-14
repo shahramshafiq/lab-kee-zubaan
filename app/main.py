@@ -1,4 +1,5 @@
 """Web API. Thin routes only: all decisions are made in engine.py."""
+import json
 import logging
 import uuid
 from pathlib import Path
@@ -180,6 +181,37 @@ def chat_with_report(req: ChatRequest):
                           "and checked the results again.", "refused": False, "source": "rules",
                 "analysis": updated}
     return chat.answer(req.message, session["analysis"], NAMES, req.language, voice=req.voice)
+
+
+@app.post("/api/chat-stream")
+def chat_with_report_stream(req: ChatRequest):
+    """Same as /api/chat, but the answer arrives sentence by sentence (one JSON object per line), so the page can
+    start speaking the first sentence while the model is still writing the rest."""
+    session = SESSIONS.get(req.session_id)
+    if not session:
+        raise HTTPException(404, "This conversation has expired. Please upload the report again.")
+    patient: Patient = session["patient"]
+    age, sex = chat.parse_demographics(req.message)
+    needs = session["analysis"]["summary"]["needs"]
+
+    def events():
+        if needs and ((age and "age" in needs) or (sex and "sex" in needs)):
+            _apply_overrides(patient, age, sex)
+            updated = explain(analyze(patient, KB), language=req.language, use_ai=False)
+            updated["session_id"] = req.session_id
+            session["analysis"] = updated
+            text = ("Thank you. I used what you told me (marked as given by you, not from the report) "
+                    "and checked the results again.")
+            yield {"type": "final", "answer": text, "spoken": text, "refused": False, "source": "rules",
+                   "analysis": updated}
+            return
+        yield from chat.answer_stream(req.message, session["analysis"], NAMES, req.language, voice=req.voice)
+
+    def lines():
+        for event in events():
+            yield json.dumps(event, ensure_ascii=False) + "\n"
+
+    return StreamingResponse(lines(), media_type="application/x-ndjson", headers={"Cache-Control": "no-store"})
 
 
 @app.post("/api/stt")

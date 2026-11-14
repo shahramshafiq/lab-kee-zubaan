@@ -90,6 +90,96 @@ def fallback_answer(question: str, analysis: Dict) -> str:
     return analysis.get("explanation", {}).get("summary", "") or "Please ask about one of the tests in your report."
 
 
+SENTENCE_END = re.compile(r"(?<=[.!?۔؟])\s+|\n+")
+EARLY_CUT = 90  # the first spoken piece may be cut at a comma after this many characters, to start speaking sooner
+
+
+def _drain(buffer: str, first: bool):
+    """Split what has been written so far into finished sentences and the unfinished rest."""
+    parts = SENTENCE_END.split(buffer)
+    ready, rest = parts[:-1], parts[-1]
+    if not ready and first and len(rest) > EARLY_CUT:
+        cut = rest.rfind(", ", 30, EARLY_CUT + 40)
+        if cut > 0:
+            return [rest[:cut + 1]], rest[cut + 2:]
+    return ready, rest
+
+
+def answer_stream(question: str, analysis: Dict, all_names: Set[str], language: str = "en", voice: bool = True):
+    """Yield events as the answer is written: {'type': 'sentence'|'replace'|'final'|'done', ...}.
+    Every finished sentence is checked (no invented numbers, no diagnosis, no wrong names) BEFORE it is sent on to be
+    spoken. If a sentence fails, the rest is dropped and the safe rules answer replaces everything."""
+    def safe(text: str, source: str, refused: bool = False, reason: str = ""):
+        event = {"type": "final", "answer": text, "spoken": to_speech(text, language), "refused": refused,
+                 "source": source}
+        if reason:
+            event["reason"] = reason
+        return event
+
+    blocked = _answer_if_blocked(question, analysis, all_names)
+    if blocked:
+        yield safe(blocked["answer"], "rules", True, blocked.get("reason", ""))
+        return
+    prompt = (f"Answer in {LANGUAGES.get(language, LANGUAGES['en'])}.\n"
+              f"Patient: {json.dumps(deidentify(analysis)['patient'])}\n"
+              f"Facts: {json.dumps(_facts(analysis))}\nQuestion: {question}")
+    if voice:
+        prompt += "\nThis answer will be spoken aloud to an older person: at most 40 words, short sentences."
+    sentences, buffer, first = [], "", True
+
+    def vet(raw: str):
+        """Return the clean sentence, '' if it is empty, or None if it is not allowed."""
+        text = plain_text(raw)
+        if not text or re.fullmatch(r"\d+[.)]?", text):  # empty, or only a list number such as '1.'
+            return ""
+        if check_answer(text, analysis):
+            log.warning("Streamed sentence rejected: %s", check_answer(text, analysis))
+            return None
+        return text
+
+    try:
+        for piece in llm.stream_ask(CHAT_SYSTEM, prompt, fast=voice):
+            buffer += piece
+            ready, buffer = _drain(buffer, first and not sentences)
+            for raw in ready:
+                text = vet(raw)
+                if text is None:
+                    fb = fallback_answer(question, analysis)
+                    yield safe(fb, "rules")
+                    return
+                if text:
+                    sentences.append(text)
+                    first = False
+                    yield {"type": "sentence", "text": text, "spoken": to_speech(text, language)}
+        tail = vet(buffer) if buffer.strip() else ""
+        if tail is None:
+            yield safe(fallback_answer(question, analysis), "rules")
+            return
+        if tail:
+            sentences.append(tail)
+            yield {"type": "sentence", "text": tail, "spoken": to_speech(tail, language)}
+    except llm.LLMUnavailable:
+        if not sentences:
+            yield safe(fallback_answer(question, analysis), "rules")
+            return
+    if not sentences:
+        yield safe(fallback_answer(question, analysis), "rules")
+        return
+    yield {"type": "done", "answer": " ".join(sentences), "source": "ai", "refused": False}
+
+
+def _answer_if_blocked(question: str, analysis: Dict, all_names: Set[str]):
+    """Fixed safe replies (other patient, diagnosis, medicine, attack), or None when the question is fine."""
+    if asks_about_someone_else(question, analysis["patient"], all_names):
+        observability.count("refused_other_patient")
+        return {"answer": REFUSAL, "reason": "other_patient"}
+    kind = guard.classify_question(question)
+    if kind:
+        observability.count("refused_" + kind)
+        return {"answer": guard.MESSAGES[kind], "reason": kind}
+    return None
+
+
 def answer(question: str, analysis: Dict, all_names: Set[str], language: str = "en",
            asker: Optional[Callable] = None, voice: bool = False) -> Dict:
     """Return {'answer', 'refused', 'source', 'spoken'}. 'spoken' is the same text written for a voice
