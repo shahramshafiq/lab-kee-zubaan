@@ -103,11 +103,9 @@ async def synth_stream(text: str, language: str) -> AsyncIterator[bytes]:
     voice = VOICES.get(language, VOICES["en"])
     chunks = []
     try:
-        async with asyncio.timeout(25):
-            async for part in edge_tts.Communicate(text, voice, rate=TTS_RATE).stream():
-                if part["type"] == "audio":
-                    chunks.append(part["data"])
-                    yield part["data"]
+        async for data in _edge_hedged(text, voice):
+            chunks.append(data)
+            yield data
     except Exception as exc:  # network, service change, timeout
         log.warning("Text to speech failed: %s", type(exc).__name__)
         if not chunks:
@@ -119,6 +117,71 @@ async def synth_stream(text: str, language: str) -> AsyncIterator[bytes]:
             cached.write_bytes(b"".join(chunks))
         except OSError:
             log.warning("Could not write the voice cache")
+
+
+# The Edge voice service is usually quick (1 to 1.5 s to the first sound) but now and then one request is slow (3 to 7 s)
+# or returns nothing. So a second identical request is started when the first is slow or fails, and whichever sounds
+# first is used. This is what keeps the Urdu voice from feeling slow.
+HEDGE_AFTER = float(os.getenv("TTS_HEDGE_AFTER", "1.8"))
+EDGE_DEADLINE = float(os.getenv("TTS_DEADLINE", "25"))
+
+
+async def _edge_attempt(text: str, voice: str, tag: int, out: "asyncio.Queue") -> None:
+    import edge_tts
+
+    try:
+        async for part in edge_tts.Communicate(text, voice, rate=TTS_RATE).stream():
+            if part["type"] == "audio":
+                await out.put((tag, part["data"]))
+        await out.put((tag, None))  # finished
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:
+        await out.put((tag, exc))
+
+
+async def _edge_hedged(text: str, voice: str) -> AsyncIterator[bytes]:
+    out: asyncio.Queue = asyncio.Queue()
+    tasks = {0: asyncio.create_task(_edge_attempt(text, voice, 0, out))}
+    winner = None
+    failed = set()
+    deadline = asyncio.get_running_loop().time() + EDGE_DEADLINE
+    try:
+        while True:
+            left = deadline - asyncio.get_running_loop().time()
+            if left <= 0:
+                raise TimeoutError("voice deadline")
+            wait = left if (winner is not None or 1 in tasks) else min(left, HEDGE_AFTER)
+            try:
+                tag, item = await asyncio.wait_for(out.get(), wait)
+            except asyncio.TimeoutError:
+                if winner is None and 1 not in tasks and asyncio.get_running_loop().time() < deadline:
+                    log.info("Voice is slow, starting a second request")
+                    tasks[1] = asyncio.create_task(_edge_attempt(text, voice, 1, out))
+                    continue
+                raise TimeoutError("voice deadline")
+            if winner is not None and tag != winner:
+                continue  # the other request, no longer needed
+            if isinstance(item, Exception):
+                failed.add(tag)
+                if winner == tag:
+                    raise item  # failed half way through: the caller keeps what it already has
+                if 1 not in tasks:  # first request failed outright: try again at once
+                    tasks[1] = asyncio.create_task(_edge_attempt(text, voice, 1, out))
+                elif len(failed) == 2:
+                    raise item
+                continue
+            if item is None:
+                return
+            if winner is None:
+                winner = tag
+                for other, task in tasks.items():
+                    if other != tag:
+                        task.cancel()
+            yield item
+    finally:
+        for task in tasks.values():
+            task.cancel()
 
 
 async def synthesize(text: str, language: str) -> bytes:

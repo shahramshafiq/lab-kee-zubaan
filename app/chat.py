@@ -2,6 +2,7 @@
 import json
 import logging
 import re
+from app.plain import plain_for
 from pathlib import Path
 from typing import Callable, Dict, Optional, Set, Tuple
 
@@ -18,7 +19,10 @@ REFUSAL = ("I can only talk about the report you are using right now. I cannot s
 # words that point at other people's records
 GROUP_WORDS = re.compile(
     r"\b(other|another|everyone|everybody|all)\b.{0,25}\b(patients?|reports?|people|results?)\b"
-    r"|\b(someone else|my (friend|neighbou?r|colleague|boss|cousin|brother|sister)|his report|her report)\b", re.I)
+    r"|\b(someone else|my (friend|neighbou?r|colleague|boss|cousin|brother|sister|husband|wife|mother|father|mom|dad|"
+    r"son|daughter|uncle|aunt|grandmother|grandfather|child|baby|partner|relative)|his report|her report|their report)\b"
+    r"|\bwho (?:in|else|all|has|have)\b|\bwhich (?:patients?|people)\b|\b(?:list|show) (?:of )?(?:all )?(?:patients?|people)\b"
+    r"|\bcompare (?:us|me with|my (?:results?|report) with)\b|\bsame system\b", re.I)
 ID_PATTERN = re.compile(r"\bCLD-P\d+(?:-\d+)?\b|\bP0\d{2}\b", re.I)
 
 def plain_text(text: str) -> str:
@@ -90,6 +94,26 @@ def fallback_answer(question: str, analysis: Dict) -> str:
     return analysis.get("explanation", {}).get("summary", "") or "Please ask about one of the tests in your report."
 
 
+ALIASES: Dict[str, str] = {}  # filled once at start-up from the lab glossary: {'sgpt': 'ALT', ...}
+ASKS_MEANING = re.compile(r"\b(what|mean|meaning|means|explain|define|kya|matlab|kaun)\b|کیا|مطلب|معنی", re.I)
+
+
+def alias_answer(question: str, language: str = "en"):
+    """'What does SGPT mean?' -> 'SGPT is another name for ALT' from the lab glossary. None when not that kind of question."""
+    if not ASKS_MEANING.search(question):
+        return None
+    for word in re.findall(r"[A-Za-z0-9]{2,}", question):
+        canonical = ALIASES.get(word.lower())
+        if canonical and canonical.lower() != word.lower():
+            measures, _meaning = plain_for(canonical, "normal")
+            if language == "ur":
+                return f"{word.upper()} اور {canonical} ایک ہی ٹیسٹ کے دو نام ہیں، یہ لیب کی لغت میں بھی لکھا ہے۔"
+            if language == "roman_urdu":
+                return f"{word.upper()} aur {canonical} aik hi test ke do naam hain, yeh lab ki glossary mein bhi likha hai."
+            return f"{word.upper()} is another name for {canonical}, as the lab's glossary says. " + (measures or "")
+    return None
+
+
 SENTENCE_END = re.compile(r"(?<=[.!?۔؟])\s+|\n+")
 EARLY_CUT = 90  # the first spoken piece may be cut at a comma after this many characters, to start speaking sooner
 
@@ -116,9 +140,13 @@ def answer_stream(question: str, analysis: Dict, all_names: Set[str], language: 
             event["reason"] = reason
         return event
 
-    blocked = _answer_if_blocked(question, analysis, all_names)
+    blocked = _answer_if_blocked(question, analysis, all_names, language)
     if blocked:
         yield safe(blocked["answer"], "rules", True, blocked.get("reason", ""))
+        return
+    named = alias_answer(question, language)
+    if named:
+        yield safe(named, "rules")
         return
     prompt = (f"Answer in {LANGUAGES.get(language, LANGUAGES['en'])}.\n"
               f"Patient: {json.dumps(deidentify(analysis)['patient'])}\n"
@@ -168,15 +196,15 @@ def answer_stream(question: str, analysis: Dict, all_names: Set[str], language: 
     yield {"type": "done", "answer": " ".join(sentences), "source": "ai", "refused": False}
 
 
-def _answer_if_blocked(question: str, analysis: Dict, all_names: Set[str]):
+def _answer_if_blocked(question: str, analysis: Dict, all_names: Set[str], language: str = "en"):
     """Fixed safe replies (other patient, diagnosis, medicine, attack), or None when the question is fine."""
     if asks_about_someone_else(question, analysis["patient"], all_names):
         observability.count("refused_other_patient")
-        return {"answer": REFUSAL, "reason": "other_patient"}
+        return {"answer": guard.message("other_patient", language) or REFUSAL, "reason": "other_patient"}
     kind = guard.classify_question(question)
     if kind:
         observability.count("refused_" + kind)
-        return {"answer": guard.MESSAGES[kind], "reason": kind}
+        return {"answer": guard.message(kind, language), "reason": kind}
     return None
 
 
@@ -193,11 +221,15 @@ def _answer(question: str, analysis: Dict, all_names: Set[str], language: str, a
             voice: bool) -> Dict:
     if asks_about_someone_else(question, analysis["patient"], all_names):
         observability.count("refused_other_patient")
-        return {"answer": REFUSAL, "refused": True, "source": "rules", "reason": "other_patient"}
+        return {"answer": guard.message("other_patient", language) or REFUSAL, "refused": True, "source": "rules",
+                "reason": "other_patient"}
     kind = guard.classify_question(question)
     if kind:  # diagnosis, treatment or an attack on the instructions: fixed safe answer, the AI never sees it
         observability.count("refused_" + kind)
-        return {"answer": guard.MESSAGES[kind], "refused": True, "source": "rules", "reason": kind}
+        return {"answer": guard.message(kind, language), "refused": True, "source": "rules", "reason": kind}
+    named = alias_answer(question, language)
+    if named:  # 'What does SGPT mean?' is answered from the lab glossary, not by the model
+        return {"answer": named, "refused": False, "source": "rules"}
     try:
         prompt = (f"Answer in {LANGUAGES.get(language, LANGUAGES['en'])}.\n"
                   f"Patient: {json.dumps(deidentify(analysis)['patient'])}\n"

@@ -1,6 +1,7 @@
 """Web API. Thin routes only: all decisions are made in engine.py."""
 import json
 import logging
+from decimal import Decimal
 import mimetypes
 import uuid
 from pathlib import Path
@@ -19,7 +20,7 @@ from app.explain import explain
 from app.extract import Patient, parse_report
 from app.knowledge import KnowledgeBase, load_kb
 from app.logging_setup import setup_logging
-from app.pdfread import PdfProblem, pdf_to_text
+from app.readfile import FileProblem, readings
 
 setup_logging()
 log = logging.getLogger("app")
@@ -44,10 +45,11 @@ app.middleware("http")(observability.middleware)
 app.add_middleware(PageGZip, minimum_size=1024)
 KB: KnowledgeBase = load_kb(config.DATA_DIR)
 NAMES = chat.other_patient_names(config.DATA_DIR)
+chat.ALIASES = KB.aliases  # so 'What does SGPT mean?' can be answered from the lab glossary
 SESSIONS: Dict[str, Dict] = {}
 MAX_SESSIONS = 500
 MAX_CHARS = 200_000
-MAX_UPLOAD = 5_000_000
+MAX_UPLOAD = 12_000_000  # phone photos and long scanned reports are big
 
 
 class AnalyzeRequest(BaseModel):
@@ -78,6 +80,22 @@ def _find_report(report_id: str) -> Path:
     raise HTTPException(404, f"No report with id {report_id}")
 
 
+def _public(analysis: Dict) -> Dict:
+    """What leaves the server. The name and record number stay inside (the chat uses them to refuse other patients)."""
+    out = dict(analysis)
+    out["patient"] = {k: v for k, v in analysis["patient"].items() if k not in ("name", "mrn")}
+    return out
+
+
+THANKS = {
+    "en": ("Thank you. I used what you told me (marked as given by you, not from the report) and checked the results again."),
+    "ur": ("شکریہ۔ میں نے آپ کی بتائی ہوئی معلومات استعمال کیں (ان پر نشان ہے کہ یہ آپ نے دی ہیں، رپورٹ میں نہیں تھیں) "
+           "اور نتائج دوبارہ جانچ لیے۔"),
+    "roman_urdu": ("Shukriya. Maine aap ki batayi hui maloomat istemal ki (nishan hai ke yeh aap ne di hain, report mein "
+                   "nahin thin) aur nataij dobara jaanch liye."),
+}
+
+
 def _run(patient: Patient, language: str, use_ai: bool, background: Optional[BackgroundTasks] = None) -> Dict:
     result = explain(analyze(patient, KB), language=language, use_ai=use_ai)
     if background is not None:  # prepare the spoken summary now, so the Listen button plays at once
@@ -88,7 +106,7 @@ def _run(patient: Patient, language: str, use_ai: bool, background: Optional[Bac
     session_id = uuid.uuid4().hex
     SESSIONS[session_id] = {"patient": patient, "analysis": result}
     result["session_id"] = session_id
-    return result
+    return _public(result)
 
 
 def _apply_overrides(patient: Patient, age: Optional[int], sex: Optional[str]) -> None:
@@ -99,6 +117,34 @@ def _apply_overrides(patient: Patient, age: Optional[int], sex: Optional[str]) -
         s = sex.strip().lower()
         if s in ("male", "female"):
             patient.sex, patient.sex_raw = s, f"{s} (given by the user)"
+
+
+class RangeRequest(BaseModel):
+    session_id: str
+    test: str = Field(..., min_length=1, max_length=80)
+    low: float
+    high: float
+    language: str = "en"
+
+
+@app.post("/api/user-range")
+def user_range(req: RangeRequest):
+    """The patient types the normal range printed on their own report for a test we have no range for.
+    The result is then compared with it and labelled as coming from the patient, never as one of our lab files."""
+    session = SESSIONS.get(req.session_id)
+    if not session:
+        raise HTTPException(404, "This conversation has expired. Please upload the report again.")
+    if not (abs(req.low) < 1e9 and abs(req.high) < 1e9) or req.low >= req.high or req.low < 0:
+        raise HTTPException(422, "Please type the range as two numbers, the lower one first (for example 15 and 150).")
+    match = [f for f in session["analysis"]["results"] if f["test"] == req.test and f["can_provide_range"]]
+    if not match:
+        raise HTTPException(422, "This test does not need a range from you.")
+    ranges = session.setdefault("user_ranges", {})
+    ranges[match[0]["test_as_written"].strip().lower()] = (Decimal(str(req.low)), Decimal(str(req.high)))
+    updated = explain(analyze(session["patient"], KB, user_ranges=ranges), language=req.language, use_ai=False)
+    updated["session_id"] = req.session_id
+    session["analysis"] = updated
+    return _public(updated)
 
 
 @app.get("/api/health")
@@ -157,27 +203,34 @@ def explain_session(req: ExplainRequest):
     return {"explanation": updated["explanation"]}
 
 
+def _read_upload(raw: bytes, filename: str) -> Patient:
+    """Try each reading of the file (plain text, laid-out text, OCR) and keep the first one with test results."""
+    last_problem = None
+    try:
+        for text in readings(raw, filename):
+            patient = parse_report(text, filename)
+            if patient.results:
+                return patient
+    except FileProblem as exc:
+        last_problem = exc
+    except Exception as exc:  # a broken file must never become a server error
+        log.warning("Could not read the upload: %s", type(exc).__name__)
+        last_problem = FileProblem("I could not read this file. Please try a PDF, a picture, a Word file or a text file.")
+    if last_problem:
+        raise HTTPException(422, str(last_problem))
+    raise HTTPException(422, "I could not find any test results in this file. If it is a photo, please make sure the "
+                             "results table is sharp and fully in the picture.")
+
+
 @app.post("/api/analyze-file")
 async def analyze_file(background: BackgroundTasks, file: UploadFile = File(...), language: str = "en",
                        use_ai: bool = True):
     raw = await file.read(MAX_UPLOAD + 1)
     if len(raw) > MAX_UPLOAD:
-        raise HTTPException(413, "File is too big (limit 5 MB).")
+        raise HTTPException(413, "File is too big (limit 12 MB).")
     if not raw:
         raise HTTPException(400, "The file is empty.")
-    if raw[:5] == b"%PDF-":
-        try:
-            text = await run_in_threadpool(pdf_to_text, raw)
-        except PdfProblem as exc:
-            raise HTTPException(422, str(exc))
-    else:
-        try:
-            text = raw.decode("utf-8")
-        except UnicodeDecodeError:
-            raise HTTPException(415, "Please upload a PDF, or a text or markdown report (.txt or .md).")
-    patient = parse_report(text, file.filename or "upload")
-    if not patient.results:
-        raise HTTPException(422, "I could not find any test results in this file.")
+    patient = await run_in_threadpool(_read_upload, raw, file.filename or "upload")
     return _run(patient, language, use_ai, background)
 
 
@@ -192,12 +245,11 @@ def chat_with_report(req: ChatRequest):
     needs = session["analysis"]["summary"]["needs"]
     if needs and ((age and "age" in needs) or (sex and "sex" in needs)):
         _apply_overrides(patient, age, sex)
-        updated = explain(analyze(patient, KB), language=req.language, use_ai=True)
+        updated = explain(analyze(patient, KB, user_ranges=session.get('user_ranges')), language=req.language, use_ai=True)
         updated["session_id"] = req.session_id
         session["analysis"] = updated
-        return {"answer": "Thank you. I used what you told me (marked as given by you, not from the report) "
-                          "and checked the results again.", "refused": False, "source": "rules",
-                "analysis": updated}
+        return {"answer": THANKS.get(req.language, THANKS["en"]), "refused": False, "source": "rules",
+                "analysis": _public(updated)}
     return chat.answer(req.message, session["analysis"], NAMES, req.language, voice=req.voice)
 
 
@@ -215,13 +267,13 @@ def chat_with_report_stream(req: ChatRequest):
     def events():
         if needs and ((age and "age" in needs) or (sex and "sex" in needs)):
             _apply_overrides(patient, age, sex)
-            updated = explain(analyze(patient, KB), language=req.language, use_ai=False)
+            updated = explain(analyze(patient, KB, user_ranges=session.get("user_ranges")), language=req.language,
+                              use_ai=False)
             updated["session_id"] = req.session_id
             session["analysis"] = updated
-            text = ("Thank you. I used what you told me (marked as given by you, not from the report) "
-                    "and checked the results again.")
+            text = THANKS.get(req.language, THANKS["en"])
             yield {"type": "final", "answer": text, "spoken": text, "refused": False, "source": "rules",
-                   "analysis": updated}
+                   "analysis": _public(updated)}
             return
         yield from chat.answer_stream(req.message, session["analysis"], NAMES, req.language, voice=req.voice)
 
