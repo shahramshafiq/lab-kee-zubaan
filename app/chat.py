@@ -8,6 +8,7 @@ from typing import Callable, Dict, Optional, Set, Tuple
 from app import guard, llm, observability
 from app.explain import LANGUAGES, _facts, check_answer, deidentify
 from app.extract import parse_report
+from app.speakable import to_speech
 
 log = logging.getLogger(__name__)
 
@@ -79,7 +80,15 @@ def fallback_answer(question: str, analysis: Dict) -> str:
 
 def answer(question: str, analysis: Dict, all_names: Set[str], language: str = "en",
            asker: Optional[Callable] = None, voice: bool = False) -> Dict:
-    """Return {'answer', 'refused', 'source'}. Never raises. voice=True keeps the answer very short."""
+    """Return {'answer', 'refused', 'source', 'spoken'}. 'spoken' is the same text written for a voice
+    (numbers and units as words). Never raises. voice=True keeps the answer very short."""
+    result = _answer(question, analysis, all_names, language, asker, voice)
+    result["spoken"] = to_speech(result["answer"], language)
+    return result
+
+
+def _answer(question: str, analysis: Dict, all_names: Set[str], language: str, asker: Optional[Callable],
+            voice: bool) -> Dict:
     if asks_about_someone_else(question, analysis["patient"], all_names):
         observability.count("refused_other_patient")
         return {"answer": REFUSAL, "refused": True, "source": "rules", "reason": "other_patient"}

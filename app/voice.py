@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import AsyncIterator
 
 from app import llm
+from app.speakable import to_speech
 
 log = logging.getLogger(__name__)
 
@@ -80,6 +81,7 @@ async def synth_stream(text: str, language: str) -> AsyncIterator[bytes]:
     Finished audio is cached for next time."""
     import edge_tts  # imported here so the app still starts if the package is missing
 
+    text = to_speech(text, language)  # '12,000 g/dL' is said as words, not as digits
     cached = _cache_file(text, language)
     if cached.exists():
         yield cached.read_bytes()

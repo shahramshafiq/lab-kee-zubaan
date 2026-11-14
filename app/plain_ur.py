@@ -65,6 +65,18 @@ PLAIN_UR = {
 }
 
 
+# Test names in Urdu script, so the Urdu voice and the Urdu page do not mix in English words.
+NAMES_UR = {
+    "Hemoglobin": "ہیموگلوبن", "White Blood Cell Count": "سفید خلیات", "Platelet Count": "پلیٹلیٹس",
+    "Fasting Blood Sugar": "فاسٹنگ بلڈ شوگر", "ALT": "اے ایل ٹی", "AST": "اے ایس ٹی", "Cholesterol": "کولیسٹرول",
+    "TSH": "ٹی ایس ایچ", "Urine pH": "پیشاب کا پی ایچ", "Urine Protein": "پیشاب میں پروٹین",
+}
+
+
+def name_ur(test: str) -> str:
+    return NAMES_UR.get(test, test)
+
+
 def plain_ur(test: str, status: str):
     entry = PLAIN_UR.get(test)
     if not entry:
@@ -78,10 +90,10 @@ def summary_ur(results, urgent: bool) -> str:
     normal = sum(1 for f in results if f["status"] == "normal")
     parts = [f"{total} میں سے {normal} نتائج نارمل ہیں۔"]
     for status, label in (("urgent", "فوری توجہ درکار ہے"), ("high", "زیادہ ہے"), ("low", "کم ہے")):
-        names = [f["test"] for f in results if f["status"] == status]
+        names = [name_ur(f["test"]) for f in results if f["status"] == status]
         if names:
             parts.append(f"{'، '.join(names)}: {label}۔")
-    unsure = [f["test"] for f in results if f["status"] in ("cannot_classify", "needs_demographics")]
+    unsure = [name_ur(f["test"]) for f in results if f["status"] in ("cannot_classify", "needs_demographics")]
     if unsure:
         parts.append(f"{'، '.join(unsure)}: لیب کی فائلوں سے جانچ ممکن نہیں ہوئی۔")
     if urgent:
@@ -97,7 +109,7 @@ def voice_ur(results, urgent: bool, needs) -> str:
     if urgent:
         parts.append("اہم بات۔ ایک نتیجہ خطرناک سطح پر ہے۔ براہ کرم آج ہی ڈاکٹر سے ملیں۔")
     parts.append(f"{total} میں سے {normal} نتائج نارمل ہیں۔")
-    odd = [f"{f['test']} {'کم' if f['status'] == 'low' else 'زیادہ'} ہے" for f in results if f["status"] in ("low", "high")]
+    odd = [f"{name_ur(f['test'])} {'کم' if f['status'] == 'low' else 'زیادہ'} ہے" for f in results if f["status"] in ("low", "high")]
     if odd:
         parts.append("، ".join(odd[:3]) + "۔")
     if needs:
@@ -110,7 +122,7 @@ def voice_ur(results, urgent: bool, needs) -> str:
 def questions_ur(results):
     qs = []
     for f in results:
-        t = f["test"]
+        t = name_ur(f["test"])
         if f["status"] == "urgent":
             qs.append(f"میرا {t} کا نتیجہ فوری ہے۔ مجھے آج کیا کرنا چاہیے، اور کیا ابھی علاج یا ٹیسٹ کی ضرورت ہے؟")
         elif f["status"] in ("low", "high"):
