@@ -167,12 +167,14 @@ async function explainInBackground(run, lang) {
 }
 
 function showResults() {
+  tell("lz:results", { urgent: !!(state.analysis && state.analysis.urgent_warning) });
   $("start").classList.add("hidden");
   $("results").classList.remove("hidden");
   window.scrollTo({ top: 0, behavior: "smooth" });
   $("h-results").focus({ preventScroll: true });
 }
 $("again").addEventListener("click", () => {
+  tell("lz:reset");
   stopSpeaking();
   state.sessionId = null; state.analysis = null; state.run += 1;
   $("results").classList.add("hidden");
@@ -205,8 +207,9 @@ function render(data) {
   const cards = $("cards");
   cards.replaceChildren();
   state.testNodes = {};
-  data.results.forEach((r) => {
+  data.results.forEach((r, index) => {
     const card = el("article", "result " + r.status);
+    card.style.setProperty("--i", String(Math.min(index, 8)));  // cards come in one after the other
     const head = el("header");
     const name = (ex.test_names && ex.test_names[r.test]) || r.test;
     head.appendChild(markUrdu(el("h3", "", name)));
@@ -293,8 +296,13 @@ function deviceVoice(lang) {
   return null;  // never fall back to a voice of another language: it would read Urdu letters as nonsense
 }
 
+function tell(name, detail) {  // lets the 3D background react (see intro.js); harmless if it is not there
+  document.dispatchEvent(new CustomEvent(name, { detail }));
+}
+
 function setMode(mode) {
   state.mode = mode;
+  tell("lz:voice", mode);
   const button = $("play");
   button.classList.toggle("busy", mode === "busy");
   button.classList.toggle("on", mode === "on");
@@ -532,6 +540,7 @@ async function toggleRecording() {
   recorder.onstop = async () => {
     stream.getTracks().forEach((t) => t.stop());
     state.recorder = null;
+    tell("lz:listening", false);
     $("mic").classList.remove("rec");
     note.textContent = "Understanding...";
     try {
@@ -549,6 +558,7 @@ async function toggleRecording() {
     }
   };
   recorder.start();
+  tell("lz:listening", true);
   fetch("/api/warmup").catch(() => {});  // while the person speaks, the server opens its AI and voice connections
   $("mic").classList.add("rec");
   note.textContent = "Listening... press the microphone again when you are done.";
