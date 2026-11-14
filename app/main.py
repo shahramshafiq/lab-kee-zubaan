@@ -16,6 +16,7 @@ from app.explain import explain
 from app.extract import Patient, parse_report
 from app.knowledge import KnowledgeBase, load_kb
 from app.logging_setup import setup_logging
+from app.pdfread import PdfProblem, pdf_to_text
 
 setup_logging()
 log = logging.getLogger("app")
@@ -27,6 +28,7 @@ NAMES = chat.other_patient_names(config.DATA_DIR)
 SESSIONS: Dict[str, Dict] = {}
 MAX_SESSIONS = 500
 MAX_CHARS = 200_000
+MAX_UPLOAD = 5_000_000
 
 
 class AnalyzeRequest(BaseModel):
@@ -116,13 +118,21 @@ def analyze_report(req: AnalyzeRequest):
 
 @app.post("/api/analyze-file")
 async def analyze_file(file: UploadFile = File(...), language: str = "en", use_ai: bool = True):
-    raw = await file.read()
-    if len(raw) > 1_000_000:
-        raise HTTPException(413, "File is too big (limit 1 MB).")
-    try:
-        text = raw.decode("utf-8")
-    except UnicodeDecodeError:
-        raise HTTPException(415, "Please upload a text or markdown report (.txt or .md).")
+    raw = await file.read(MAX_UPLOAD + 1)
+    if len(raw) > MAX_UPLOAD:
+        raise HTTPException(413, "File is too big (limit 5 MB).")
+    if not raw:
+        raise HTTPException(400, "The file is empty.")
+    if raw[:5] == b"%PDF-":
+        try:
+            text = await run_in_threadpool(pdf_to_text, raw)
+        except PdfProblem as exc:
+            raise HTTPException(422, str(exc))
+    else:
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            raise HTTPException(415, "Please upload a PDF, or a text or markdown report (.txt or .md).")
     patient = parse_report(text, file.filename or "upload")
     if not patient.results:
         raise HTTPException(422, "I could not find any test results in this file.")

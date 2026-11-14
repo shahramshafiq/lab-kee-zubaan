@@ -28,9 +28,10 @@ TEST_NAME_KEYS = {"test", "test conducted", "test name", "analyte", "investigati
 TEST_VALUE_KEYS = {"result", "results", "value recorded", "value", "observed value"}
 QUALITATIVE = {"negative", "positive", "trace", "nil", "absent", "present", "not detected", "detected", "normal"}
 VALUE_RE = re.compile(r"^(?P<cmp>[<>]=?)?\s*(?P<num>\d+(?:\.\d+)?)\s*(?P<unit>.*)$")
+# 'Hemoglobin 13.5 g/dL' or 'Hemoglobin 13.5 g/dL 12.1 - 15.1 Normal' (PDF tables). A unit is required here.
 PLAIN_RE = re.compile(
     r"^(?P<name>[A-Za-z][A-Za-z0-9 ()%/.\-]{1,40}?)\s+(?P<value>[<>]?=?\s*\d+(?:\.\d+)?)\s*"
-    r"(?P<unit>[A-Za-z%/^*0-9µμ.]+)?$")
+    r"(?P<unit>[A-Za-z%/^*µμ][A-Za-z%/^*0-9µμ.]*)(?:\s+.*)?$")
 MAX_RESULTS = 200
 
 
