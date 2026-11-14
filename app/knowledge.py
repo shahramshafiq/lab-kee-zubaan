@@ -57,13 +57,43 @@ class KnowledgeBase:
     ranges: List[RangeRule] = field(default_factory=list)
     urgent: List[UrgentRule] = field(default_factory=list)
     aliases: Dict[str, str] = field(default_factory=dict)
+    _word_index: Dict[frozenset, str] = field(default_factory=dict, repr=False)
     safety_rules: List[str] = field(default_factory=list)
 
     def canonical(self, raw_name: str) -> Optional[str]:
         key = re.sub(r"\s+", " ", raw_name.strip().lower())
         if key in self.aliases:
             return self.aliases[key]
+        return self._by_words(key)
+
+    def _by_words(self, key: str) -> Optional[str]:
+        """'Glucose (Fasting)', 'Cholesterol, Total' and 'Fasting Blood Sugar (FBS)' are the same tests as the sheet's
+        'Fasting Blood Sugar' and 'Cholesterol'. Words are compared as a set, ignoring order and filler words, and a
+        bracket is only used when both halves agree, so 'Cholesterol (HDL)' is never read as total cholesterol."""
+        if not self._word_index:
+            for alias, canonical in self.aliases.items():
+                words = _words(alias)
+                self._word_index.setdefault(words, canonical)
+                if "blood" in words and len(words) > 2:  # 'fasting sugar' is the same as 'fasting blood sugar'
+                    self._word_index.setdefault(words - {"blood"}, canonical)
+        found = self._word_index.get(_words(key))
+        if found:
+            return found
+        m = re.match(r"^(.*?)\s*\(([^)]*)\)\s*$", key)
+        if m and m.group(1) and m.group(2):
+            outer, inner = self._word_index.get(_words(m.group(1))), self._word_index.get(_words(m.group(2)))
+            if outer and (inner == outer):
+                return outer
         return None
+
+
+_FILLER = {"sr", "serum", "plasma", "level", "levels", "test", "the", "of"}
+_SAME = {"glucose": "sugar", "bs": "sugar"}
+
+
+def _words(name: str) -> frozenset:
+    parts = re.findall(r"[a-z0-9]+", name.lower())
+    return frozenset(_SAME.get(w, w) for w in parts if w not in _FILLER)
 
 
 def _lines(path: Path):

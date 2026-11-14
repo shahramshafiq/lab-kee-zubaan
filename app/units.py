@@ -9,6 +9,9 @@ _SYNONYMS = {
     "/mcl": "cells/ul",
     "cells/mm3": "cells/ul",
     "/mm3": "cells/ul",
+    "/cumm": "cells/ul",       # per cubic millimetre is the same volume as a microlitre
+    "/cu.mm": "cells/ul",
+    "cells/cumm": "cells/ul",
     "iu/l": "u/l",
     "uiu/ml": "miu/l",
     "mu/l": "miu/l",

@@ -27,6 +27,11 @@ MRN_KEYS = {"medical record number (mrn)", "medical record number", "mrn"}
 TEST_NAME_KEYS = {"test", "test conducted", "test name", "analyte", "investigation"}
 TEST_VALUE_KEYS = {"result", "results", "value recorded", "value", "observed value"}
 QUALITATIVE = {"negative", "positive", "trace", "nil", "absent", "present", "not detected", "detected", "normal"}
+TIME_UNITS = {"hours", "hour", "hrs", "hr", "h", "minutes", "minute", "mins", "min", "seconds", "sec", "days", "day",
+              "weeks", "months", "years", "yrs", "yr"}  # a duration is never a lab result
+NO_RESULT = re.compile(r"^(pending|awaited|in progress|n/?a|na|nr|none|not (?:available|done|reported|performed|tested)|"
+                       r"unavailable|-+|—)$|hem[o]?lyz|haemolys|hemolys|insufficient|clotted|lipemic|result unavailable|"
+                       r"sample (?:rejected|not)|cancel|invalid|error", re.I)
 VALUE_RE = re.compile(r"^(?P<cmp>[<>]=?)?\s*(?P<num>\d+(?:\.\d+)?)\s*(?P<unit>.*)$")
 # 'Hemoglobin 13.5 g/dL' or 'Hemoglobin 13.5 g/dL 12.1 - 15.1 Normal' (PDF tables). A unit is required here.
 PLAIN_RE = re.compile(
@@ -44,6 +49,10 @@ class RawResult:
     comparator: str
     line: int
     raw: str
+    value_text: str = ""      # what was written, when it could not be read
+    alt_value: Optional[Decimal] = None  # '1,200' read as 1200, used ONLY to check the danger limits
+    alt_unit: str = ""
+    missing_reason: str = ""  # set when the report names the test but gives no usable result (Pending, N/A, -4.1, 1,2 ...)
 
 
 @dataclass
@@ -63,15 +72,67 @@ def _clean(line: str) -> str:
     return re.sub(r"^[*\-•]\s+", "", s).strip()
 
 
+def _odd_reason(text: str) -> str:
+    """Why a value could not be read, in words for the patient. '' when it is simply not a result."""
+    t = (text or "").strip()
+    if not t:
+        return "the report names this test but no result is written next to it"
+    if NO_RESULT.search(t.strip(". ")):
+        return f"the report gives no result for this test ('{t[:40]}')"
+    if re.match(r"^[-−–]\s*\d", t):
+        return "the value is written as a negative number, which is not possible for a lab result, so it cannot be trusted"
+    if COMMA_NUMBER.match(t):
+        return (f"the number is written with a comma ('{t[:20]}'), so it could mean a decimal or a thousand "
+                "(1,2 or 1,200). Please check the report")
+    return ""
+
+
+COMMA_NUMBER = re.compile(r"^[<>]?=?\s*\d{1,3},\d")
+SCI_RE = re.compile(r"^(?P<cmp>[<>]=?)?\s*(?P<num>\d+(?:\.\d+)?)\s*[eE](?P<exp>[+-]?\d{1,2})\s*(?P<unit>.*)$")
+
+
 def _parse_value(text: str):
     """Return (value, unit, qualitative, comparator) or None when the text is not a result value."""
     text = text.strip()
+    if COMMA_NUMBER.match(text):
+        return None  # 1,2 or 1,200 could be a decimal or a thousand: never guess
+    sci = SCI_RE.match(text)
+    if sci:  # 7.5E3 is 7500
+        return Decimal(sci.group("num")).scaleb(int(sci.group("exp"))), sci.group("unit").strip(), None, sci.group("cmp") or ""
     m = VALUE_RE.match(text)
     if m:
         return Decimal(m.group("num")), m.group("unit").strip(), None, m.group("cmp") or ""
     if text.lower().strip(". ") in QUALITATIVE:
         return None, "", text.strip(". "), ""
     return None
+
+
+HEADER_WORDS = {"test", "test name", "analyte", "investigation", "parameter", "result", "results", "value", "unit",
+                "units", "reference", "reference range", "range", "normal range", "flag", "status", "method", "remarks"}
+UNIT_CELL = re.compile(r"^[A-Za-zµμ%/][A-Za-z0-9%/^*µμ.\-]{0,14}$")
+RANGE_CELL = re.compile(r"^[<>]?=?\s*\d+(?:\.\d+)?\s*[-–]\s*\d")
+
+
+def _is_header_row(cells) -> bool:
+    words = [c.lower().strip(" :") for c in cells if c.strip()]
+    return len(words) >= 2 and sum(w in HEADER_WORDS for w in words) >= 2
+
+
+def _table_value(cells):
+    """The value of a table row. The result is normally the second cell; some tables put a method or code there first."""
+    first = _parse_value(cells[1] + (" " + cells[2] if len(cells) > 2 else ""))
+    if first and (first[0] is not None or first[2]):
+        return first
+    for i in range(1, len(cells)):
+        cell = cells[i].strip()
+        if not cell or RANGE_CELL.match(cell):
+            continue
+        parsed = _parse_value(cell)
+        if parsed and (parsed[0] is not None or parsed[2]):
+            if parsed[0] is not None and not parsed[1] and i + 1 < len(cells) and UNIT_CELL.match(cells[i + 1].strip())                     and cells[i + 1].strip().lower() not in HEADER_WORDS | QUALITATIVE:
+                return parsed[0], cells[i + 1].strip(), None, parsed[3]
+            return parsed
+    return first
 
 
 def _parse_age(raw: str) -> Optional[int]:
@@ -92,16 +153,36 @@ def parse_report(text: str, source: str = "report") -> Patient:
     p = Patient(source=source)
     pending_name = None
 
-    def add(name: str, parsed, number: int, raw_line: str) -> None:
-        if parsed and len(p.results) < MAX_RESULTS:
+    in_meta = [False]  # inside the specimen or patient details part of the report: nothing there is a result
+
+    def add(name: str, parsed, number: int, raw_line: str, text=None) -> None:
+        if in_meta[0] or len(p.results) >= MAX_RESULTS:
+            return
+        if parsed:
+            if parsed[1].lower().strip(". ") in TIME_UNITS:
+                return
             p.results.append(RawResult(clean_test_name(name), parsed[0], parsed[1], parsed[2], parsed[3], number,
                                        raw_line))
+        elif text is not None and not META_WORDS.search(name):
+            reason = _odd_reason(text)
+            if reason:
+                th = re.match(r"^(\d{1,3}),(\d{3})(?!\d)\s*(.*)$", (text or "").strip())
+                p.results.append(RawResult(clean_test_name(name), None, "", None, "", number, raw_line,
+                                           (text or "").strip()[:30], Decimal(th.group(1) + th.group(2)) if th else None,
+                                           th.group(3).strip() if th else "", reason))
 
     for number, raw_line in enumerate(text.splitlines(), start=1):
         if APPENDIX.match(raw_line):
             break  # everything after this is filler
         s = _clean(raw_line)
-        if not s or s.startswith("#"):
+        if s.startswith("#"):
+            heading = s.lower()
+            if re.search(r"specimen|demographic|encounter|patient details|collection", heading):
+                in_meta[0] = True
+            elif re.search(r"result|analytical|finding|investigation", heading):
+                in_meta[0] = False
+            continue
+        if not s:
             continue
 
         # markdown table row: | name | value | unit |
@@ -109,20 +190,24 @@ def parse_report(text: str, source: str = "report") -> Patient:
             cells = [c.strip() for c in s.strip("|").split("|")]
             if all(set(c) <= set("-: ") for c in cells) or len(cells) < 2:
                 continue
-            if cells[0].lower() in ("test", "test name", "analyte") and cells[1].lower() in ("result", "value", "results"):
+            if _is_header_row(cells):
                 continue
-            add(cells[0], _parse_value(cells[1] + (" " + cells[2] if len(cells) > 2 else "")), number, raw_line)
+            add(cells[0], _table_value(cells), number, raw_line, " ".join(cells[1:3]))
             continue
 
         # arrow form: name -> value
         if "->" in s:
             name, _, rest = s.partition("->")
             if name.strip():
-                add(name.strip(), _parse_value(rest), number, raw_line)
+                add(name.strip(), _parse_value(rest), number, raw_line, rest)
             continue
 
         m = re.match(r"^(.{1,60}?)\s*[:=]\s*(.+)$", s)
         if not m:
+            blank = re.match(r"^([A-Za-z][^:=|]{1,38}?)\s*:\s*$", s)  # 'Platelet Count:' with nothing after it
+            if blank and len(blank.group(1).split()) <= 4 and not META_WORDS.search(blank.group(1))                     and blank.group(1).strip().lower() not in NAME_KEYS | AGE_KEYS | SEX_KEYS | MRN_KEYS:
+                add(blank.group(1), None, number, raw_line, "")
+                continue
             plain = PLAIN_RE.match(s)  # 'Hemoglobin 13.5 g/dL'
             if plain and not META_WORDS.search(plain.group("name")):
                 add(plain.group("name"),
@@ -135,6 +220,13 @@ def parse_report(text: str, source: str = "report") -> Patient:
             p.name = value[:80]
         elif k in AGE_KEYS:
             p.age_raw, p.age = value[:40], _parse_age(value)
+        elif k.replace(" ", "") in ("age/sex", "sex/age", "age&sex", "age,sex", "age/gender", "gender/age"):
+            m_age = re.search(r"\d{1,3}", value)
+            m_sex = re.search(r"(male|female|m|f)", value, re.I)
+            if m_age:
+                p.age_raw, p.age = value[:40], int(m_age.group())
+            if m_sex:
+                p.sex_raw, p.sex = value[:40], _parse_sex(m_sex.group(1))
         elif k in SEX_KEYS:
             p.sex_raw, p.sex = value[:40], _parse_sex(value)
         elif k in MRN_KEYS:
@@ -142,9 +234,9 @@ def parse_report(text: str, source: str = "report") -> Patient:
         elif k in TEST_NAME_KEYS:
             pending_name = value
         elif k in TEST_VALUE_KEYS and pending_name:
-            add(pending_name, _parse_value(value), number, raw_line)
+            add(pending_name, _parse_value(value), number, raw_line, value)
             pending_name = None
         elif not META_WORDS.search(key):
-            add(key, _parse_value(value), number, raw_line)
+            add(key, _parse_value(value), number, raw_line, value)
     log.info("Parsed %s: %d results, age=%s sex=%s", source, len(p.results), p.age, p.sex)
     return p

@@ -29,7 +29,12 @@ SYSTEM = (
     "general; remind that only a licensed doctor can diagnose; if a value is urgent, say clearly to see a doctor today; "
     "if something could not be classified or a range could not be chosen, say so and do not guess. "
     "Return ONLY a JSON object: {\"summary\": string, \"tests\": {\"<test name>\": string}, "
-    "\"questions\": [string]} with 3 to 5 questions for the doctor, based on the results that are not normal. "
+    "\"questions\": [string]} with 3 to 5 questions for the doctor. They must be questions a thoughtful patient would really "
+    "ask about THESE results: name the test and its value, and ask practical things (what to do next, which follow-up "
+    "test, how soon to repeat it, whether a medicine, food, fasting or a recent illness could explain it, which warning "
+    "signs mean going to a hospital). Never vague or generic ('what is blood?', 'how do I stay healthy?'), and never ask "
+    "the doctor to name a disease for you. If a result could not be classified, tell the patient to look for the printed "
+    "reference range and unit on their report and to ask the lab which range applies, and never guess a range. "
     "Keep every sentence short and simple. Each test explanation is at most 2 sentences."
 )
 
@@ -105,6 +110,11 @@ def check_text(data: Dict, analysis: Dict) -> Optional[str]:
                 return f"number {n} is not in the facts"
     if analysis["summary"]["urgent"] and not re.search(r"doctor", data.get("summary", ""), re.I):
         return "urgent result without a doctor warning"
+    results = analysis.get("results", [])
+    normal = sum(1 for f in results if f["status"] == "normal")
+    if results and normal * 2 <= len(results) and re.search(
+            r"\b(?:most|all|majority|almost all|mostly)\b[^.]{0,40}\bnormal\b", data.get("summary", ""), re.I):
+        return "says most results are normal, but fewer than half are"
     return None
 
 
@@ -178,6 +188,21 @@ def rules_explanation(analysis: Dict, language: str = "en") -> Dict:
     }
 
 
+def _urgent_questions_first(data: Dict, analysis: Dict, fallback: Dict) -> None:
+    """An urgent result must always have its own doctor question, first in the list, whatever the model wrote."""
+    urgent = [f for f in analysis["results"] if f["status"] == "urgent"]
+    if not urgent:
+        return
+    rule_questions = fallback.get("questions", [])
+    for i, f in enumerate(urgent):
+        if any(f["test"].lower() in str(q).lower() or (name := (fallback.get("test_names", {}).get(f["test"]) or "")) and name in str(q)
+               for q in data["questions"]):
+            continue
+        if i < len(rule_questions):
+            data["questions"].insert(i, rule_questions[i])
+    data["questions"] = data["questions"][:5]
+
+
 def explain(analysis: Dict, language: str = "en", use_ai: bool = True,
             asker: Optional[Callable] = None) -> Dict:
     """Return the analysis with an 'explanation' block. Never raises: falls back to the rules text.
@@ -213,6 +238,7 @@ def explain(analysis: Dict, language: str = "en", use_ai: bool = True,
             return out
         data["source"], data["language"] = "ai", language
         data["voice"] = fallback["voice"]
+        _urgent_questions_first(data, analysis, fallback)
         if "test_names" in fallback:
             data["test_names"] = fallback["test_names"]
         # make sure every test has a sentence, even if the model skipped one

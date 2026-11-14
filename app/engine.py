@@ -3,6 +3,7 @@
 Statuses: normal, low, high, urgent, cannot_classify, needs_demographics.
 """
 import logging
+import re
 from decimal import Decimal
 from typing import Dict, List, Optional
 
@@ -10,7 +11,7 @@ from app import config
 from app.extract import Patient, RawResult
 from app.knowledge import KnowledgeBase, RangeRule
 from app.plain import DISCLAIMER, plain_for
-from app.units import convert
+from app.units import convert, norm_unit
 
 log = logging.getLogger(__name__)
 
@@ -51,10 +52,11 @@ def _urgent_check(canonical: str, value: Decimal, unit_raw: str, kb: KnowledgeBa
 
 
 def _base(res: RawResult, canonical: Optional[str]) -> Dict:
+    shown = res.qualitative if res.qualitative else f"{res.comparator}{_num(res.value)}" if res.value is not None else (res.value_text or "no result")
     return {
         "test_as_written": res.name,
         "test": canonical or res.name,
-        "value_as_written": res.qualitative if res.qualitative else f"{res.comparator}{_num(res.value)}",
+        "value_as_written": shown,
         "unit_as_written": res.unit,
         "line": res.line,
         "status": "cannot_classify",
@@ -66,16 +68,69 @@ def _base(res: RawResult, canonical: Optional[str]) -> Dict:
         "urgent_rule": None,
         "reason": "",
         "ask": [],
+        "next_code": "",           # which standard next-step text the page shows, in the chosen language
+        "next_step": "",           # what the patient can do when a result cannot be classified (never a guess)
+        "can_provide_range": False,  # True: the patient may type the normal range printed on their own report
+        "user_range": False,       # True: the status was decided with a range the patient typed in
     }
 
 
-def classify(res: RawResult, patient: Patient, kb: KnowledgeBase, strict: bool) -> Dict:
+NEXT_NO_RANGE = ("Look next to this result on your report for a column called 'reference range' or 'normal range'. "
+                 "If a range is printed there, type it below and I will compare your value with it. I will say clearly "
+                 "that the range came from you, not from the lab files. If nothing is printed, ask the lab which range "
+                 "they use.")
+NEXT_NO_UNIT = ("The unit is missing next to this value, so comparing it would be a guess. Check which unit your report "
+                "prints for it (for example g/dL or mg/dL), and ask the lab if none is printed.")
+NEXT_ASK_LAB = "Please ask your doctor or the lab how to read this result. I cannot judge it from the files I have."
+
+
+def _apply_user_range(out: Dict, res: RawResult, given) -> None:
+    """The patient typed the normal range from their own report. Compare in the unit written on the report."""
+    low, high = given
+    value = res.value
+    out["range_used"] = {"low": _num(low), "high": _num(high), "qualitative": None, "unit": res.unit, "sex": "all",
+                         "age_min": None, "age_max": None, "source": "the range you typed from your report"}
+    out["user_range"] = True
+    out["can_provide_range"] = True
+    out["status"], out["direction"] = (("low", "low") if value < low else ("high", "high") if value > high
+                                         else ("normal", None))
+    out["reason"] = (f"Compared with the range you typed from your report ({_num(low)} to {_num(high)} {res.unit}). "
+                     "This range is not from the lab files, so please confirm it with your doctor.")
+    out["next_step"], out["next_code"] = "", ""
+
+
+def classify(res: RawResult, patient: Patient, kb: KnowledgeBase, strict: bool, user_ranges=None) -> Dict:
     canonical = kb.canonical(res.name)
     out = _base(res, canonical)
+    if res.missing_reason:  # named in the report, but there is nothing usable to compare
+        out["reason"] = "cannot be classified from the files: " + res.missing_reason + "."
+        out["next_step"] = ("Ask the lab or your doctor for this result in a clear form. I will not guess a value or "
+                            "a range for it.")
+        out["next_code"] = "missing"
+        if res.alt_value is not None and canonical:  # '1,200': never guessed, but a danger limit must not be missed
+            rule, std = _urgent_check(canonical, res.alt_value, res.alt_unit, kb)
+            if rule:
+                out.update(
+                    status="urgent", direction="low" if rule.trigger == "less" else "high", value_standard=_num(std),
+                    unit_standard=rule.unit,
+                    urgent_rule={"trigger": rule.trigger, "threshold": _num(rule.threshold), "unit": rule.unit,
+                                 "source": rule.source},
+                    reason=(f"The number is written with a comma ({res.value_text}). Read as {_num(res.alt_value)} it is "
+                            f"past the dangerous limit in {rule.source}. Please see a doctor today, and check the exact "
+                            "value on the report."))
+                out["next_step"], out["next_code"] = "", ""
+        return out
 
     rules = [r for r in kb.ranges if canonical and r.test == canonical]
     if not canonical or not rules:
         out["reason"] = "cannot be classified from the files: no matching normal range for this test."
+        numeric = res.value is not None and not res.comparator
+        out["can_provide_range"] = numeric
+        out["next_step"] = NEXT_NO_RANGE if numeric else NEXT_ASK_LAB
+        out["next_code"] = "no_range" if numeric else "ask_lab"
+        given = (user_ranges or {}).get(res.name.strip().lower())
+        if numeric and given:
+            _apply_user_range(out, res, given)
         return out
 
     # 1) danger check first: it does not depend on age or sex
@@ -121,6 +176,7 @@ def _attach_range(out: Dict, res: RawResult, patient: Patient, rules: List[Range
         if out["status"] != "urgent":
             out["reason"] = (f"cannot be classified from the files: no normal range for age {patient.age}, "
                              f"sex {patient.sex}.")
+            out["next_step"], out["next_code"] = NEXT_ASK_LAB, "ask_lab"
         return
     rule = candidates[0]
     out["range_used"] = {
@@ -135,6 +191,12 @@ def _attach_range(out: Dict, res: RawResult, patient: Patient, rules: List[Range
             out["reason"] = "cannot be classified from the files: this test needs a word result such as Negative."
             return
         normal = value in ("negative", "nil", "absent", "not detected", "normal")
+        if not normal and not re.match(r"^(positive|present|detected|\d\s*\+|\+{1,4})", value):
+            # the sheet only says what is normal. Words such as Trace are not covered, so no label is guessed.
+            out["reason"] = (f"cannot be classified from the files: the sheet says normal is {rule.qualitative}, "
+                             f"and does not say how to read '{res.qualitative or value}'.")
+            out["next_step"], out["next_code"] = "Ask your doctor what this result means for you. I will not guess it.", "ask_lab"
+            return
         out["status"], out["direction"] = ("normal", None) if normal else ("high", "high")
         out["reason"] = f"Normal is {rule.qualitative} ({rule.source})."
         return
@@ -142,6 +204,8 @@ def _attach_range(out: Dict, res: RawResult, patient: Patient, rules: List[Range
     if res.value is None or res.comparator:
         out["reason"] = ("cannot be classified from the files: the value is not an exact number "
                          f"({res.comparator or ''}{res.qualitative or ''}).")
+        out["next_step"], out["next_code"] = ("A result such as '<5' or a word result needs a doctor's reading. Ask "
+                            "your doctor what it means for you."), "not_exact"
         return
 
     converted = convert(rule.test, res.value, res.unit, rule.unit)
@@ -150,9 +214,12 @@ def _attach_range(out: Dict, res: RawResult, patient: Patient, rules: List[Range
             if not res.unit:
                 out["reason"] = ("cannot be classified from the files: no unit was written next to the value, "
                                  f"so it cannot be compared safely with {rule.unit}.")
+                out["next_step"], out["next_code"] = NEXT_NO_UNIT, "no_unit"
             else:
                 out["reason"] = (f"cannot be classified from the files: the unit '{res.unit}' cannot be converted "
                                  f"to '{rule.unit}'.")
+                out["next_step"], out["next_code"] = ("I do not know how to convert this unit safely. Check whether your "
+                                    "report prints the same result in another unit, and ask the lab if you are not sure."), "unit_convert"
         return
     value, steps = converted
     out["value_standard"], out["unit_standard"] = _num(value), rule.unit
@@ -171,32 +238,79 @@ def _attach_range(out: Dict, res: RawResult, patient: Patient, rules: List[Range
                      f"({rule.source}); a value exactly on a limit counts as normal.")
 
 
+def _with_unit(f: Dict) -> str:
+    return f"{f['value_as_written']} {f['unit_as_written']}".strip()
+
+
 def doctor_questions(findings: List[Dict]) -> List[str]:
-    """3 to 5 questions, built from the results that are not normal."""
+    """3 to 5 questions a thoughtful patient would really ask, built from the actual results (never vague)."""
     qs: List[str] = []
-    for f in findings:
-        t = f["test"]
+    order = {"urgent": 0, "low": 1, "high": 1, "cannot_classify": 2}
+    for f in sorted((x for x in findings if x["status"] in order), key=lambda x: order[x["status"]]):
+        t, shown = f["test"], _with_unit(f)
+        rng = f.get("range_used") or {}
+        span = f"{rng['low']} to {rng['high']} {rng['unit']}" if rng.get("low") is not None else ""
         if f["status"] == "urgent":
-            qs.append(f"My {t} result is marked urgent. What should I do today, and do I need treatment or tests right now?")
+            qs.append(f"My {t} is {shown}, which is at a dangerous level. Do I need to go to a hospital today, "
+                      "and what should be checked or repeated first?")
         elif f["status"] in ("low", "high"):
-            qs.append(f"My {t} is {f['status']}. What could be causing this in my case?")
-        elif f["status"] in ("cannot_classify", "needs_demographics"):
-            qs.append(f"The lab sheets could not judge my {t}. How should I understand this result?")
-    generic = [
-        "Do I need to repeat any test, and when?",
-        "Should I change my food, medicines or daily routine before the next test?",
-        "Which of these results should I watch most closely?",
+            qs.append(f"My {t} is {shown}, {f['status']} against a normal range of {span}. Is that enough to need "
+                      "treatment, or should we repeat it first, and what would you check next to find the reason?")
+        elif f["can_provide_range"]:
+            qs.append(f"My {t} was {shown}, but I could not check it against a normal range. Which range does your lab "
+                      "use for it, and is my value normal for me?")
+        else:
+            qs.append(f"I could not read my {t} result ({shown}) with confidence. What does it mean for me?")
+    pool = [
+        "Could a medicine, a supplement, fasting or a recent illness have changed these results?",
+        "Which of these results should I repeat, and how soon?",
+        "Are any of these results connected to each other, and does that change what you would do?",
     ]
-    for g in generic:
+    if not any(f["status"] in ("urgent", "low", "high", "cannot_classify") for f in findings):
+        pool = ["All my results are normal. Is there anything about my age, family history or symptoms that these tests "
+                "would not show?",
+                "How often should I repeat this set of tests?",
+                "Which tests would you add if I develop symptoms?"]
+    for q in pool:
         if len(qs) >= 3:
             break
-        qs.append(g)
+        qs.append(q)
     return qs[:5]
 
 
-def analyze(patient: Patient, kb: KnowledgeBase, strict: Optional[bool] = None) -> Dict:
+def _merge_repeats(patient: Patient, kb: KnowledgeBase) -> List[RawResult]:
+    """The same test written twice with the same value is shown once. The same test with two different values is a
+    conflict: both are kept and marked, because the report itself does not say which one is right."""
+    groups: Dict[str, List[RawResult]] = {}
+    order: List[str] = []
+    for r in patient.results:
+        key = (kb.canonical(r.name) or r.name).strip().lower()
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append(r)
+    out: List[RawResult] = []
+    for key in order:
+        seen, unique = set(), []
+        for r in groups[key]:
+            sig = (r.value, r.qualitative, r.comparator, norm_unit(r.unit or ""), r.missing_reason)
+            if sig not in seen:
+                seen.add(sig)
+                unique.append(r)
+        if len(unique) > 1:
+            values = " and ".join(f"{u.comparator}{_num(u.value) if u.value is not None else u.qualitative or '?'} {u.unit}".strip()
+                                  for u in unique)
+            for u in unique:
+                if not u.missing_reason:
+                    u.missing_reason = (f"the report lists this test more than once with different values ({values}) "
+                                        "and does not say which one is right")
+        out.extend(unique)
+    return out
+
+
+def analyze(patient: Patient, kb: KnowledgeBase, strict: Optional[bool] = None, user_ranges=None) -> Dict:
     strict = config.STRICT_DEMOGRAPHICS if strict is None else strict
-    findings = [classify(r, patient, kb, strict) for r in patient.results]
+    findings = [classify(r, patient, kb, strict, user_ranges) for r in _merge_repeats(patient, kb)]
     for f in findings:
         measures, meaning = plain_for(f["test"], f["status"])
         f["what_it_measures"], f["what_it_can_mean"] = measures, meaning
