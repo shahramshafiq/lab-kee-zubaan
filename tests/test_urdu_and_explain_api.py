@@ -110,6 +110,18 @@ def test_explain_endpoint_survives_an_ai_outage(monkeypatch):
     assert r.json()["explanation"]["language"] == "ur"
 
 
+def test_switching_language_reuses_the_same_report_instantly():
+    """The page must be able to change language without sending the report again (samples and uploads have no text)."""
+    first = client.post("/api/analyze", json={"report_id": "P009", "use_ai": False, "language": "en"}).json()
+    r = client.post("/api/explain", json={"session_id": first["session_id"], "language": "ur", "use_ai": False})
+    assert r.status_code == 200
+    e = r.json()["explanation"]
+    assert e["language"] == "ur" and e["source"] == "rules" and URDU.search(e["voice"])
+    assert e["test_names"]["ALT"] == "اے ایل ٹی"
+    back = client.post("/api/explain", json={"session_id": first["session_id"], "language": "en", "use_ai": False}).json()
+    assert back["explanation"]["language"] == "en"
+
+
 def test_explain_endpoint_unknown_session():
     assert client.post("/api/explain", json={"session_id": "nope", "language": "en"}).status_code == 404
 

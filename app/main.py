@@ -122,6 +122,7 @@ def analyze_report(req: AnalyzeRequest, background: BackgroundTasks):
 class ExplainRequest(BaseModel):
     session_id: str
     language: str = "en"
+    use_ai: bool = True  # False: only the instant rules text, in the chosen language (used when the language changes)
 
 
 @app.post("/api/explain")
@@ -131,7 +132,7 @@ def explain_session(req: ExplainRequest):
     session = SESSIONS.get(req.session_id)
     if not session:
         raise HTTPException(404, "This conversation has expired. Please upload the report again.")
-    updated = explain(session["analysis"], language=req.language, use_ai=True)
+    updated = explain(session["analysis"], language=req.language, use_ai=req.use_ai)
     updated["session_id"] = req.session_id
     session["analysis"] = updated
     return {"explanation": updated["explanation"]}
