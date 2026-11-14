@@ -1,62 +1,66 @@
-/* Night theme: deep navy with light, glass and sapphire / ocean / jade. Loaded after style.css and only changes colour
-   and depth, so the layout rules in style.css keep working. Remove the link in index.html to get the light page back. */
+/* Night theme: quiet, crisp, a lot of space. Deep navy, white, one sapphire accent, a touch of ocean and jade.
+   Loaded after style.css and only changes colour and depth, so layout rules in style.css keep working.
+   Remove the link in index.html to get the light page back. */
 html { background: #050f26; }
 body {
   color: #e8f0ff;
+  font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
   background:
-    radial-gradient(1100px 650px at 85% -8%, rgba(0, 90, 220, .55), transparent 60%),
-    radial-gradient(900px 600px at -5% 105%, rgba(0, 160, 175, .35), transparent 58%),
-    linear-gradient(180deg, #050f26, #07204d 120%);
+    radial-gradient(1000px 560px at 88% -12%, rgba(0, 80, 200, .42), transparent 62%),
+    linear-gradient(180deg, #050f26, #071c45 130%);
   background-attachment: fixed;
 }
-#scene { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
+h1, h2, h3 { letter-spacing: -.012em; }
+#scene { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; opacity: .9; }
 .app { position: relative; z-index: 1; }
 
-/* header: frosted glass that stays at the top */
-.top { position: sticky; top: 0; z-index: 30; background: rgba(5, 15, 38, .55); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
-  border-bottom: 1px solid rgba(255, 255, 255, .09); }
-.seg { background: rgba(255, 255, 255, .1); }
-.seg-btn.on { background: linear-gradient(135deg, #83fd80, #00d3fb); color: #04163a; }
+/* header: clean, thin line, no heavy glass */
+.top { position: sticky; top: 0; z-index: 30; background: rgba(5, 15, 38, .72); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(255, 255, 255, .08); }
+.brand h1 { font-weight: 650; }
+.seg { background: transparent; border: 1px solid rgba(255, 255, 255, .22); }
+.seg-btn { color: #cfe0ff; }
+.seg-btn.on { background: #fff; color: #06204f; font-weight: 700; }
 
 /* start screen */
-.hero h2 { color: #fff; font-size: clamp(1.9rem, 6vw, 2.7rem); letter-spacing: -.01em; }
-.lead { color: #b8cdf2; font-size: 1.08rem; }
-.drop { background: rgba(255, 255, 255, .06); border: 1.5px dashed rgba(0, 211, 251, .6); color: #fff;
-  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: inset 0 0 50px rgba(0, 211, 251, .08); transition: transform .25s, border-color .25s, box-shadow .25s; }
-.drop:hover, .drop.over { background: rgba(255, 255, 255, .1); border-color: #83fd80; transform: translateY(-2px); box-shadow: inset 0 0 60px rgba(131, 253, 128, .12), 0 12px 40px rgba(0, 211, 251, .15); }
-.drop span { color: #a9c3ee; }
-.drop-icon { background: linear-gradient(135deg, #0042ac, #00d3fb); box-shadow: 0 0 28px rgba(0, 211, 251, .55); }
+.hero h2 { color: #fff; font-weight: 650; font-size: clamp(2rem, 6vw, 3rem); letter-spacing: -.025em; line-height: 1.12; }
+.lead { color: #aebfe0; font-size: 1.08rem; max-width: 34rem; }
+.drop { background: rgba(255, 255, 255, .035); border: 1px dashed rgba(255, 255, 255, .3); color: #fff; border-radius: 1rem;
+  transition: border-color .25s, background .25s; }
+.drop:hover, .drop.over { background: rgba(255, 255, 255, .07); border-color: #00d3fb; }
+.drop span { color: #9fb4da; }
+.drop-icon { background: transparent; border: 1px solid rgba(0, 211, 251, .7); color: #00d3fb !important; box-shadow: none; }
 .file-name { color: #83fd80 !important; }
-.alt, .privacy, .status, .disclaimer, .share-row, .foot, .box label { color: #a9c3ee; }
-.link { color: #7fe3ff; }
-.status.error { color: #ff8aa3; }
-select, input[type=text], input[type=number], textarea { background: rgba(255, 255, 255, .95); }
+.alt, .privacy, .status, .disclaimer, .share-row, .foot, .box label { color: #98add6; }
+.link { color: #8fe3ff; }
+.status.error { color: #ff9db1; }
+select, input[type=text], input[type=number], textarea { background: #fff; border-radius: .6rem; }
 .spin { border-color: rgba(255, 255, 255, .25); border-top-color: #00d3fb; }
 
-/* buttons */
-.primary { background: linear-gradient(135deg, #0042ac, #0a72e8 60%, #00b6e0); border-color: transparent; box-shadow: 0 8px 26px rgba(0, 110, 255, .35); transition: transform .2s, box-shadow .2s; }
-.primary:hover { background: linear-gradient(135deg, #0050cc, #1280ff 60%, #00cdf0); transform: translateY(-1px); box-shadow: 0 12px 34px rgba(0, 150, 255, .45); }
-.big { letter-spacing: .01em; }
+/* buttons: flat sapphire, one clear primary */
+.primary { background: #0a4fd0; border: 0; border-radius: .7rem; box-shadow: none; letter-spacing: .01em; transition: background .2s, transform .2s; }
+.primary:hover { background: #1260ee; transform: translateY(-1px); }
+.big { padding: .95rem; }
 
 /* results */
-.back { color: #7fe3ff; }
-.sec { color: #fff; }
-.short { border: 1px solid rgba(0, 211, 251, .4); box-shadow: 0 10px 40px rgba(0, 66, 172, .45), 0 0 60px rgba(0, 211, 251, .12); position: relative; overflow: hidden; }
-.short::before { content: ""; position: absolute; inset: 0; background: radial-gradient(500px 200px at 100% 0%, rgba(0, 211, 251, .22), transparent 70%); pointer-events: none; }
-.play { position: relative; z-index: 1; box-shadow: 0 6px 22px rgba(0, 0, 0, .25); }
-.play.on::after, .play.busy::after { content: ""; position: absolute; inset: -4px; border-radius: 1.2rem; border: 2px solid rgba(131, 253, 128, .8); animation: ripple 1.4s ease-out infinite; }
-@keyframes ripple { from { opacity: .9; transform: scale(1); } to { opacity: 0; transform: scale(1.25); } }
-.result { color: #0b1f3a; box-shadow: 0 8px 30px rgba(0, 0, 0, .25); transition: transform .25s, box-shadow .25s; animation: rise .65s calc(var(--i, 0) * 80ms) both; }
-.result:hover { transform: translateY(-3px); box-shadow: 0 16px 40px rgba(0, 0, 0, .32); }
-.result.urgent { box-shadow: 0 0 0 2px rgba(255, 90, 122, .6), 0 12px 40px rgba(255, 90, 122, .25); }
-.banner-urgent { animation: rise .5s both, throb 2.4s 1s infinite; }
-@keyframes throb { 50% { box-shadow: 0 0 0 .6rem rgba(255, 90, 122, .18); } }
-@keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+.back { color: #8fe3ff; }
+.sec { color: #fff; font-weight: 650; font-size: 1.05rem; letter-spacing: .02em; text-transform: none; }
+.short { background: #0a3a96; border: 1px solid rgba(255, 255, 255, .14); border-top: 2px solid #00d3fb; border-radius: 1rem; box-shadow: 0 14px 40px rgba(0, 20, 70, .5); }
+.short h2 { color: #8fe3ff; }
+.play { background: #fff; color: #06204f; border-radius: 2rem; box-shadow: none; position: relative; }
+.play:hover { background: #eaf4ff; }
+.play.on::after, .play.busy::after { content: ""; position: absolute; inset: -4px; border-radius: 2.2rem; border: 1.5px solid rgba(131, 253, 128, .85); animation: ripple 1.5s ease-out infinite; }
+@keyframes ripple { from { opacity: .9; transform: scale(1); } to { opacity: 0; transform: scale(1.18); } }
+.result { color: #0b1f3a; border-radius: 1rem; border: 0; box-shadow: 0 10px 30px rgba(0, 10, 40, .28); animation: rise .6s calc(var(--i, 0) * 70ms) both; }
+.value .unit { margin-left: .35rem; }
+.result.urgent { box-shadow: 0 0 0 1.5px rgba(255, 90, 122, .7), 0 10px 30px rgba(0, 10, 40, .28); }
+.banner-urgent { border-radius: 1rem; animation: rise .5s both; }
+@keyframes rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
 .questions { color: #e8f0ff; }
-.questions li { background: rgba(255, 255, 255, .07); border: 1px solid rgba(255, 255, 255, .1); border-radius: .9rem; padding: .7rem .9rem .7rem .4rem; margin-left: 1.3rem; }
-.chat { background: rgba(255, 255, 255, .97); color: #0b1f3a; box-shadow: 0 12px 40px rgba(0, 0, 0, .3); }
-.needs { color: #4a2a00; }
+.chat { background: #fff; color: #0b1f3a; border: 0; border-radius: 1rem; box-shadow: 0 14px 40px rgba(0, 10, 40, .35); }
+.needs { color: #4a2a00; border-radius: 1rem; }
 
 @media (prefers-reduced-motion: reduce) {
-  .result, .banner-urgent, .play.on::after, .play.busy::after, .drop { animation: none; transition: none; }
+  .result, .banner-urgent, .play.on::after, .play.busy::after { animation: none; }
+  .drop, .primary { transition: none; }
 }

@@ -1,0 +1,127 @@
+/* Themes. Pick one with ?theme=ivory | ink | night in the address (it is remembered). Each theme is only a set of colour
+   tokens, the components below use the tokens, so adding a theme never touches the layout. Loaded after style.css. */
+
+/* ---------- IVORY: classic and light. Warm ivory, ink navy, deep sapphire, brass ---------- */
+:root, :root[data-theme="ivory"] {
+  --page-bg: radial-gradient(900px 480px at 88% -8%, rgba(176, 141, 60, .16), transparent 62%), linear-gradient(180deg, #fbf8f1, #f2ecdf);
+  --page-ink: #14213d; --page-muted: #5b677a; --page-link: #0a3d8f;
+  --head-bg: rgba(251, 248, 241, .86); --head-line: #e3d9c3; --head-ink: #14213d;
+  --seg-line: rgba(20, 33, 61, .28); --seg-ink: #14213d; --seg-on-bg: #14213d; --seg-on-ink: #fbf8f1;
+  --card-bg: #ffffff; --card-ink: #14213d; --card-line: #e7dfcd;
+  --card-shadow: 0 1px 2px rgba(20, 33, 61, .06), 0 12px 30px rgba(20, 33, 61, .08);
+  --accent: #0a3d8f; --accent-hover: #0d4fb5; --accent-ink: #ffffff; --brass: #b08d3c;
+  --short-bg: linear-gradient(135deg, #0b2a5b, #0a3d8f); --short-ink: #ffffff; --short-sub: #e3c878; --short-top: #d4b05a;
+  --play-bg: #ffffff; --play-ink: #0b2a5b;
+  --drop-bg: #ffffff; --drop-line: rgba(176, 141, 60, .75); --drop-ink: #14213d; --drop-sub: #6a7588; --drop-hover: #fffdf7;
+  --door-a: #0b2a5b; --door-b: #061631; --seam: #d4b05a; --seam-glow: rgba(212, 176, 90, .55); --intro-ink: #ffffff; --intro-sub: #d9e3f7; --intro-ur: #e3c878;
+  --scene-a: #0a3d8f; --scene-b: #1f8a70; --scene-c: #b08d3c; --scene-warm: #b0123a; --scene-light: 1;
+  --display: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+  --rule: #d9cdb0;
+}
+
+/* ---------- INK: charcoal, warm white, one orange (the Hyro palette from the theme bank) ---------- */
+:root[data-theme="ink"] {
+  --page-bg: radial-gradient(800px 420px at 90% -6%, rgba(254, 81, 5, .2), transparent 62%), linear-gradient(180deg, #121212, #181614);
+  --page-ink: #fdf9ea; --page-muted: #b9b3a3; --page-link: #ff8a57;
+  --head-bg: rgba(18, 18, 18, .82); --head-line: rgba(253, 249, 234, .12); --head-ink: #fdf9ea;
+  --seg-line: rgba(253, 249, 234, .3); --seg-ink: #fdf9ea; --seg-on-bg: #fdf9ea; --seg-on-ink: #121212;
+  --card-bg: #fdf9ea; --card-ink: #121212; --card-line: #e9e2cf;
+  --card-shadow: 0 12px 34px rgba(0, 0, 0, .45);
+  --accent: #fe5105; --accent-hover: #ff6a2b; --accent-ink: #ffffff; --brass: #fe5105;
+  --short-bg: linear-gradient(135deg, #1f1b18, #2a211b); --short-ink: #fdf9ea; --short-sub: #ff8a57; --short-top: #fe5105;
+  --play-bg: #fdf9ea; --play-ink: #121212;
+  --drop-bg: rgba(253, 249, 234, .04); --drop-line: rgba(253, 249, 234, .32); --drop-ink: #fdf9ea; --drop-sub: #b9b3a3; --drop-hover: rgba(253, 249, 234, .08);
+  --door-a: #1c1a18; --door-b: #0b0b0b; --seam: #fe5105; --seam-glow: rgba(254, 81, 5, .55); --intro-ink: #fdf9ea; --intro-sub: #cfc9b8; --intro-ur: #ff9a66;
+  --scene-a: #fe5105; --scene-b: #fdf9ea; --scene-c: #ff9a66; --scene-warm: #ff3b5c; --scene-light: 0;
+  --rule: rgba(253, 249, 234, .16);
+}
+
+/* ---------- NIGHT: deep navy with sapphire, ocean and jade ---------- */
+:root[data-theme="night"] {
+  --page-bg: radial-gradient(1000px 560px at 88% -12%, rgba(0, 80, 200, .42), transparent 62%), linear-gradient(180deg, #050f26, #071c45 130%);
+  --page-ink: #e8f0ff; --page-muted: #98add6; --page-link: #8fe3ff;
+  --head-bg: rgba(5, 15, 38, .74); --head-line: rgba(255, 255, 255, .09); --head-ink: #ffffff;
+  --seg-line: rgba(255, 255, 255, .24); --seg-ink: #cfe0ff; --seg-on-bg: #ffffff; --seg-on-ink: #06204f;
+  --card-bg: #ffffff; --card-ink: #0b1f3a; --card-line: #d6e2f5;
+  --card-shadow: 0 10px 30px rgba(0, 10, 40, .3);
+  --accent: #0a4fd0; --accent-hover: #1260ee; --accent-ink: #ffffff; --brass: #00d3fb;
+  --short-bg: #0a3a96; --short-ink: #ffffff; --short-sub: #8fe3ff; --short-top: #00d3fb;
+  --play-bg: #ffffff; --play-ink: #06204f;
+  --drop-bg: rgba(255, 255, 255, .04); --drop-line: rgba(255, 255, 255, .3); --drop-ink: #ffffff; --drop-sub: #9fb4da; --drop-hover: rgba(255, 255, 255, .08);
+  --door-a: rgba(0, 66, 172, .85); --door-b: rgba(4, 18, 52, .94); --seam: #00d3fb; --seam-glow: rgba(0, 211, 251, .55); --intro-ink: #ffffff; --intro-sub: #c9dbfa; --intro-ur: #8fe3ff;
+  --scene-a: #00d3fb; --scene-b: #83fd80; --scene-c: #ffffff; --scene-warm: #ff5a7a; --scene-light: 0;
+  --rule: rgba(255, 255, 255, .16);
+}
+
+/* ---------- components (all colours come from the tokens above) ---------- */
+html { background: #f2ecdf; }
+html[data-theme="ink"] { background: #121212; }
+html[data-theme="night"] { background: #050f26; }
+body { color: var(--page-ink); background: var(--page-bg); background-attachment: fixed;
+  font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif; }
+h1, h2, h3 { letter-spacing: -.012em; }
+#scene { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
+.app { position: relative; z-index: 1; }
+
+.top { position: sticky; top: 0; z-index: 30; background: var(--head-bg); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--head-line); color: var(--head-ink); }
+.top::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 1px; background: linear-gradient(90deg, transparent, var(--brass), transparent); opacity: .65; }
+.brand h1 { font-family: var(--display); font-weight: 600; color: var(--head-ink); }
+.brand p { color: var(--page-muted); }
+.seg { background: transparent; border: 1px solid var(--seg-line); }
+.seg-btn { color: var(--seg-ink); }
+.seg-btn.on { background: var(--seg-on-bg); color: var(--seg-on-ink); font-weight: 700; }
+
+/* start screen */
+.hero h2 { font-family: var(--display); font-weight: 600; color: var(--page-ink); font-size: clamp(2.1rem, 6.4vw, 3.2rem); letter-spacing: -.02em; line-height: 1.1; }
+.hero h2::before { content: "Lab reports, explained"; display: block; font: 600 .72rem/1 "Segoe UI", system-ui, sans-serif; letter-spacing: .24em; text-transform: uppercase; color: var(--brass); margin-bottom: 1rem; }
+.lead { color: var(--page-muted); font-size: 1.1rem; max-width: 34rem; }
+.drop { background: var(--drop-bg); border: 1.5px dashed var(--drop-line); color: var(--drop-ink); border-radius: 1.1rem;
+  box-shadow: var(--card-shadow); transition: border-color .25s, background .25s, transform .25s; }
+.drop:hover, .drop.over { background: var(--drop-hover); border-color: var(--accent); transform: translateY(-2px); }
+.drop span { color: var(--drop-sub); }
+.drop strong { font-family: var(--display); font-weight: 600; font-size: 1.15rem; }
+.drop-icon { background: var(--accent); color: var(--accent-ink) !important; box-shadow: 0 0 0 6px rgba(127, 127, 127, .12); }
+.file-name { color: var(--accent) !important; }
+.alt, .privacy, .status, .disclaimer, .share-row, .foot, .box label { color: var(--page-muted); }
+.link { color: var(--page-link); }
+.status.error { color: #c0213f; }
+select, input[type=text], input[type=number], textarea { background: #fff; color: #14213d; border-radius: .65rem; border: 1px solid var(--card-line); }
+.spin { border-color: rgba(127, 127, 127, .3); border-top-color: var(--accent); }
+
+.primary { background: var(--accent); color: var(--accent-ink); border: 0; border-radius: .75rem; box-shadow: 0 6px 18px rgba(0, 0, 0, .18); letter-spacing: .01em; transition: background .2s, transform .2s, box-shadow .2s; }
+.primary:hover { background: var(--accent-hover); transform: translateY(-1px); box-shadow: 0 10px 26px rgba(0, 0, 0, .24); }
+.big { padding: 1rem; font-size: 1.08rem; }
+
+/* results */
+.back { color: var(--page-link); }
+.sec { font-family: var(--display); font-weight: 600; font-size: 1.3rem; color: var(--page-ink); display: flex; align-items: center; gap: .9rem; }
+.sec::after { content: ""; flex: 1; height: 1px; background: var(--rule); }
+.short { background: var(--short-bg); color: var(--short-ink); border-radius: 1.1rem; border: 0; border-top: 3px solid var(--short-top);
+  box-shadow: 0 18px 44px rgba(0, 20, 70, .28); position: relative; overflow: hidden; }
+.short::before { content: ""; position: absolute; right: -1.2rem; bottom: -1.2rem; width: 9rem; height: 9rem; opacity: .1; pointer-events: none;
+  background: linear-gradient(currentColor, currentColor) 8% 100% / 12% 40% no-repeat, linear-gradient(currentColor, currentColor) 30% 100% / 12% 75% no-repeat,
+    linear-gradient(currentColor, currentColor) 52% 100% / 12% 100% no-repeat, linear-gradient(currentColor, currentColor) 74% 100% / 12% 62% no-repeat; }
+.short h2 { color: var(--short-sub); font-family: "Segoe UI", system-ui, sans-serif; }
+.play { background: var(--play-bg); color: var(--play-ink); border-radius: 2rem; box-shadow: 0 6px 18px rgba(0, 0, 0, .2); position: relative; }
+.play:hover { filter: brightness(.97); }
+.bars i { background: var(--play-ink); } .bars i:nth-child(3) { background: var(--brass); }
+.play.on::after, .play.busy::after { content: ""; position: absolute; inset: -4px; border-radius: 2.2rem; border: 1.5px solid var(--short-top); animation: ripple 1.5s ease-out infinite; }
+@keyframes ripple { from { opacity: .9; transform: scale(1); } to { opacity: 0; transform: scale(1.18); } }
+.result { background: var(--card-bg); color: var(--card-ink); border: 1px solid var(--card-line); border-radius: 1.1rem; box-shadow: var(--card-shadow);
+  animation: rise .6s calc(var(--i, 0) * 70ms) both; }
+.result h3 { font-family: var(--display); font-weight: 600; font-size: 1.15rem; }
+.value .unit { margin-left: .35rem; }
+.result.urgent { box-shadow: 0 0 0 1.5px rgba(176, 18, 58, .65), var(--card-shadow); }
+.banner-urgent { border-radius: 1rem; animation: rise .5s both; }
+@keyframes rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+.questions { color: var(--page-ink); }
+.chat { background: var(--card-bg); color: var(--card-ink); border: 1px solid var(--card-line); border-radius: 1.1rem; box-shadow: var(--card-shadow); }
+.chat h2 { font-family: var(--display); font-weight: 600; }
+.needs { color: #4a2a00; border-radius: 1rem; }
+.disclaimer { border-top: 1px solid var(--rule); padding-top: 1rem; }
+
+@media (prefers-reduced-motion: reduce) {
+  .result, .banner-urgent, .play.on::after, .play.busy::after { animation: none; }
+  .drop, .primary { transition: none; }
+}
