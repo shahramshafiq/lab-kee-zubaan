@@ -1,0 +1,11 @@
+.venv
+.git
+.env
+__pycache__
+.pytest_cache
+.tts_cache
+tests
+_private
+AGENTS.md
+GEMINI.md
+HANDOVER.md

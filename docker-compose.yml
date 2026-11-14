@@ -1,0 +1,10 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    # keys and settings come from .env (copy .env.example). The app also starts without it, using rules text only.
+    env_file:
+      - path: .env
+        required: false
+    restart: unless-stopped
