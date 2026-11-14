@@ -4,5 +4,4 @@ pydantic
 httpx
 python-dotenv
 python-multipart
-pytest
 edge-tts
