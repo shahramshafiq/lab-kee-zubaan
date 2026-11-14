@@ -253,7 +253,15 @@ def ocr_lines(boxes) -> str:
     for r in rows:
         r.sort(key=lambda i: i["x"])
         out.append("| " + " | ".join(i["text"] for i in r) + " |" if len(r) >= 3 else "   ".join(i["text"] for i in r))
-    return "\n".join(out)
+    return "\n".join(_respace(l) for l in out)
+
+
+def _respace(line: str) -> str:
+    """OCR often writes 'Hemoglobin15g/dL' without spaces. A line that is only a name, a number and a unit is split again."""
+    if "|" in line or re.search(r"\s\d", line):
+        return line
+    m = re.match(r"^([A-Za-z][A-Za-z .()/-]*?)([<>]=?)?(\d+(?:\.\d+)?)([A-Za-z\u00b5\u03bc%/][A-Za-z0-9%/^*\u00b5\u03bc.-]*)$", line.strip())
+    return f"{m.group(1)} {m.group(2) or ''}{m.group(3)} {m.group(4)}" if m else line
 
 
 def image_to_text(data: bytes) -> str:
