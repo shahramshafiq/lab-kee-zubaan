@@ -52,7 +52,7 @@ def test_security_headers_present():
 
 
 def test_huge_request_body_is_refused_early():
-    r = client.post("/api/analyze", content=b"x" * 7_000_000, headers={"content-type": "application/json"})
+    r = client.post("/api/analyze", content=b"x" * 14_000_000, headers={"content-type": "application/json"})
     assert r.status_code == 413
 
 

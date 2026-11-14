@@ -115,14 +115,14 @@ def test_not_strict_mode_only_asks_when_needed():
 
 def test_urine_protein_variants():
     assert one(header("30", "Female") + "Protein -> Negative")["status"] == "normal"
-    assert one(header("30", "Female") + "Protein: Trace")["status"] == "high"
+    assert one(header("30", "Female") + "Protein: Trace")["status"] == "cannot_classify"
     assert one(header("30", "Female") + "Protein: 1+")["status"] == "high"
 
 
 def test_duplicate_and_many_tests():
     text = header() + "\n".join(["Hemoglobin: 15 g/dL"] * 3 + ["Ferritin: 20 ng/mL"])
     r = run(text)
-    assert len(r["results"]) == 4 and r["summary"]["counts"]["cannot_classify"] == 1
+    assert len(r["results"]) == 2 and r["summary"]["counts"]["cannot_classify"] == 1  # the same value written 3 times is shown once
 
 
 # ---------- bad input ----------

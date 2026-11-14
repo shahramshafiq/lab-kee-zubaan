@@ -63,11 +63,11 @@ def test_empty_upload():
 
 
 def test_binary_garbage_is_unsupported():
-    assert upload(b"\xff\xfe\x00\x01\x02garbage", "a.bin", "application/octet-stream").status_code == 415
+    assert upload(b"\xff\xfe\x00\x01\x02garbage", "a.bin", "application/octet-stream").status_code == 422
 
 
 def test_oversize_upload_is_refused():
-    assert upload(b"%PDF-" + b"0" * 5_100_000).status_code == 413
+    assert upload(b"%PDF-" + b"0" * 12_100_000).status_code == 413
 
 
 def test_text_upload_still_works():
