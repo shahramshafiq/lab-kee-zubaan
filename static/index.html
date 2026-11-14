@@ -11,15 +11,15 @@
   <link rel="stylesheet" href="/static/night.css">
   <link rel="stylesheet" href="/static/intro.css">
   <script>
-    // Show the doors welcome once per visit, never for people who prefer less motion. If the welcome code cannot
-    // load, the page opens by itself after a few seconds so nobody is stuck behind it.
+    // The doors welcome (dark doors, logo, Enter) shows on EVERY visit. People who prefer less motion get the same
+    // screen with a soft fade instead of sliding doors. Add ?nointro to the address to skip it. If the welcome code
+    // cannot load, the page opens by itself after a few seconds so nobody is stuck behind it.
     (function () {
-      var root = document.documentElement, seen = false;
-      try { seen = !!sessionStorage.getItem("lz-intro"); } catch (e) {}
-      if (!seen && !(window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches) && location.search.indexOf("nointro") < 0) {
-        root.classList.add("intro-on");
-        setTimeout(function () { if (root.classList.contains("intro-on") && !root.classList.contains("intro-open")) root.classList.remove("intro-on"); }, 9000);
-      }
+      var root = document.documentElement;
+      if (location.search.indexOf("nointro") >= 0) return;
+      root.classList.add("intro-on");
+      if (window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches) root.classList.add("intro-reduced");
+      setTimeout(function () { if (root.classList.contains("intro-on") && !root.classList.contains("intro-open")) root.classList.remove("intro-on"); }, 9000);
     })();
   </script>
 </head>

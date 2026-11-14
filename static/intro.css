@@ -44,8 +44,13 @@
 .intro-open .seam { opacity: 0; }
 .intro-open .intro-card { opacity: 0; transform: translate(-50%, -50%) scale(1.18); pointer-events: none; }
 
-@media (prefers-reduced-motion: reduce) {
-  .intro-on #intro { display: none; }
-  .intro-on .app { opacity: 1; }
-  .door::after, .intro-card .logo.big i, .enter, .intro-bar i { animation: none; }
-}
+/* people who prefer less motion: the same welcome, no sliding doors or moving bars, a soft fade to open */
+.intro-reduced .door { transition: none; }
+.intro-reduced .door::after, .intro-reduced .intro-card .logo.big i, .intro-reduced .enter, .intro-reduced .intro-bar i { animation: none; }
+.intro-reduced .intro-title, .intro-reduced .intro-ur, .intro-reduced .intro-tag { animation: none; }
+.intro-reduced #intro { transition: opacity .5s; }
+.intro-reduced.intro-open #intro { opacity: 0; }
+.intro-reduced.intro-open .door.left, .intro-reduced.intro-open .door.right { transform: none; }
+.intro-reduced .intro-card { transition: none; }
+.intro-reduced.intro-open .intro-card { transform: translate(-50%, -50%); }
+.intro-reduced.intro-done .app { animation: none; }

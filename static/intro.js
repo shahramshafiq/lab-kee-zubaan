@@ -16,7 +16,6 @@ if (scene) scene.start();
 
 function enterApp() {
   if (!root.classList.contains("intro-on") || root.classList.contains("intro-open")) return;
-  try { sessionStorage.setItem("lz-intro", "1"); } catch (err) { /* private mode: it will show again, harmless */ }
   root.classList.add("intro-open");
   if (scene) { scene.burst(1); scene.setMode("ambient"); }
   window.setTimeout(() => {
