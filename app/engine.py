@@ -129,7 +129,8 @@ def _attach_range(out: Dict, res: RawResult, patient: Patient, rules: List[Range
     }
 
     if rule.qualitative is not None:  # for example urine protein: Negative
-        value = (res.qualitative or "").lower()
+        # a word result ('Negative') or a plus sign style result ('1+') are both read as text
+        value = (res.qualitative or (f"{res.value.normalize():f}{res.unit}" if res.value is not None else "")).lower()
         if not value:
             out["reason"] = "cannot be classified from the files: this test needs a word result such as Negative."
             return
@@ -146,8 +147,12 @@ def _attach_range(out: Dict, res: RawResult, patient: Patient, rules: List[Range
     converted = convert(rule.test, res.value, res.unit, rule.unit)
     if converted is None:
         if out["status"] != "urgent":
-            out["reason"] = (f"cannot be classified from the files: the unit '{res.unit}' cannot be converted "
-                             f"to '{rule.unit}'.")
+            if not res.unit:
+                out["reason"] = ("cannot be classified from the files: no unit was written next to the value, "
+                                 f"so it cannot be compared safely with {rule.unit}.")
+            else:
+                out["reason"] = (f"cannot be classified from the files: the unit '{res.unit}' cannot be converted "
+                                 f"to '{rule.unit}'.")
         return
     value, steps = converted
     out["value_standard"], out["unit_standard"] = _num(value), rule.unit
