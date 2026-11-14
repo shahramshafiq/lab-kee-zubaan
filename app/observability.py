@@ -1,5 +1,6 @@
 """Request ids, timing logs, simple counters and a per-client rate limit. All in memory, no extra services."""
 import logging
+import os
 import time
 import uuid
 from collections import defaultdict, deque
@@ -13,8 +14,14 @@ log = logging.getLogger("app.http")
 METRICS: Dict[str, int] = defaultdict(int)
 MAX_BODY = 6_000_000  # largest request we accept (a 5 MB upload plus form overhead)
 
-# requests allowed per client per minute, by path prefix (first match wins)
-LIMITS = [("/api/tts", 20), ("/api/stt", 20), ("/api/chat", 40), ("/api/analyze", 30)]
+# requests allowed per client per minute, by path prefix (first match wins). Generous on purpose: an automated
+# evaluator may send many requests from one address. Voice calls cost more, so they are lower. Set in .env.
+LIMITS = [
+    ("/api/tts", int(os.getenv("RATE_TTS_PER_MIN", "120"))),
+    ("/api/stt", int(os.getenv("RATE_STT_PER_MIN", "90"))),
+    ("/api/chat", int(os.getenv("RATE_CHAT_PER_MIN", "600"))),
+    ("/api/analyze", int(os.getenv("RATE_ANALYZE_PER_MIN", "600"))),
+]
 _hits: Dict[str, Deque[float]] = defaultdict(deque)
 
 

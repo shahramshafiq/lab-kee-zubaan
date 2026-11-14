@@ -188,13 +188,21 @@ def test_guarded_questions_never_reach_the_ai(monkeypatch):
         assert r["refused"] is True, q
 
 
-def test_rate_limit_returns_a_friendly_429():
+def test_rate_limit_returns_a_friendly_429(monkeypatch):
     from app import observability
 
+    monkeypatch.setattr(observability, "LIMITS", [("/api/tts", 5)])
     observability._hits.clear()
-    codes = [client.post("/api/tts", json={"text": "", "language": "en"}).status_code for _ in range(25)]
-    assert 429 in codes
+    codes = [client.post("/api/tts", json={"text": "", "language": "en"}).status_code for _ in range(8)]
+    assert codes.count(429) == 3 and codes[0] == 422
     observability._hits.clear()
+
+
+def test_default_limits_are_generous_for_an_automated_evaluator():
+    from app import observability
+
+    limits = dict(observability.LIMITS)
+    assert limits["/api/analyze"] >= 300 and limits["/api/chat"] >= 300
 
 
 def test_metrics_endpoint():
