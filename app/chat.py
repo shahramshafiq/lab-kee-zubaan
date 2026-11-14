@@ -21,7 +21,19 @@ GROUP_WORDS = re.compile(
     r"|\b(someone else|my (friend|neighbou?r|colleague|boss|cousin|brother|sister)|his report|her report)\b", re.I)
 ID_PATTERN = re.compile(r"\bCLD-P\d+(?:-\d+)?\b|\bP0\d{2}\b", re.I)
 
+def plain_text(text: str) -> str:
+    """Models like to answer in markdown. The page shows plain text, so remove the markup and odd dashes."""
+    text = text.replace("‑", "-").replace("‐", "-").replace("–", "-").replace("—", ", ")
+    text = re.sub(r"\*\*|__|`|^#{1,6}\s*", "", text, flags=re.M)
+    text = re.sub(r"^\s*[-*•]\s+", "", text, flags=re.M)      # bullet symbols
+    text = re.sub(r"^\s*\d+[.)]\s+", "", text, flags=re.M)         # 1. 2. 3.
+    text = re.sub(r"[ \t]+", " ", text)
+    return re.sub(r"\n{2,}", "\n", text).strip()
+
+
 CHAT_SYSTEM = (
+    "Write plain text only: no markdown, no asterisks, no bullet symbols, no tables, no headings. "
+    "Use the full names exactly as given in the facts ('full_name'); never expand a short name yourself. "
     "You answer questions about ONE lab report using only the facts given. Keep answers short and in words a class 8 "
     "student can follow. Never invent numbers or ranges. Never say the person has a disease; say only a licensed "
     "doctor can diagnose. You may explain what a test measures and what a low or high value can mean in general, "
@@ -108,6 +120,7 @@ def _answer(question: str, analysis: Dict, all_names: Set[str], language: str, a
             text = llm.ask(CHAT_SYSTEM, prompt, fast=True).strip()  # spoken answers use the quicker model
         else:
             text = llm.ask(CHAT_SYSTEM, prompt).strip()
+        text = plain_text(text)
         problem = check_answer(text, analysis)
         if problem:  # same safety check as the explanation: no invented numbers, no diagnosis
             log.warning("Chat answer rejected: %s", problem)

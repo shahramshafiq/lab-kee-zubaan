@@ -13,7 +13,8 @@ from decimal import Decimal
 from typing import Callable, Dict, List, Optional, Set
 
 from app import llm, observability
-from app.plain_ur import plain_ur, questions_ur, summary_ur, voice_ur
+from app.plain import FULL_NAMES
+from app.plain_ur import name_ur, plain_ur, questions_ur, summary_ur, voice_ur
 
 log = logging.getLogger(__name__)
 _CACHE: "OrderedDict[str, Dict]" = OrderedDict()  # checked AI explanations, keyed by facts and language
@@ -44,6 +45,9 @@ DIAGNOSIS = re.compile(
     + r"|\b(?:aap\s*ko|aapko|mareez\s+ko)\b.{0,25}\b(?:diabetes|anemia|anaemia|hepatitis|jaundice|cancer|infection)\b.{0,12}\bhai\b"
     + "|آپ کو.{0,25}(?:ذیابیطس|خون کی کمی|یرقان|ہیپاٹائٹس|کینسر).{0,12}ہے",
     re.I)
+# ALT is Alanine and AST is Aspartate. Mixing them up is a factual error a checker can catch.
+WRONG_NAME = re.compile(r"\bAST\b[^.\n]{0,40}\balanine\b|\balanine\b[^.\n]{0,40}\bAST\b|"
+                        r"\bALT\b[^.\n]{0,40}\baspartate\b|\baspartate\b[^.\n]{0,40}\bALT\b", re.I)
 _DIGITS = str.maketrans("٠١٢٣٤٥٦٧٨٩"
                         "۰۱۲۳۴۵۶۷۸۹", "01234567890123456789")
 
@@ -64,6 +68,7 @@ def _facts(analysis: Dict) -> List[Dict]:
             "reason": f["reason"], "ask_for": f["ask"],
             # general, non-diagnostic words the lab tool already holds for this test
             "plain": {"measures": f.get("what_it_measures", ""), "what_low_or_high_can_mean": f.get("what_it_can_mean", "")},
+            "full_name": FULL_NAMES.get(f["test"], f["test"]),
         })
     return facts
 
@@ -93,6 +98,8 @@ def check_text(data: Dict, analysis: Dict) -> Optional[str]:
         t = re.sub(r"(?<=\d),(?=\d{3})", "", t)  # 120,000 -> 120000
         if DIAGNOSIS.search(t):
             return "sounds like a diagnosis"
+        if WRONG_NAME.search(t):
+            return "wrong full name for ALT or AST"
         for n in re.findall(r"\d+(?:\.\d+)?", t):
             if _norm(n) not in allowed:
                 return f"number {n} is not in the facts"
@@ -158,6 +165,7 @@ def rules_explanation(analysis: Dict, language: str = "en") -> Dict:
             measures, meaning = plain_ur(f["test"], f["status"])
             tests[f["test"]] = " ".join(x for x in (measures, meaning) if x)
         return {"summary": summary_ur(results, urgent), "voice": voice_ur(results, urgent, needs), "tests": tests,
+                "test_names": {f["test"]: name_ur(f["test"]) for f in results},
                 "questions": questions_ur(results), "source": "rules", "language": "ur"}
     return {
         "summary": rules_summary(analysis),
@@ -205,6 +213,8 @@ def explain(analysis: Dict, language: str = "en", use_ai: bool = True,
             return out
         data["source"], data["language"] = "ai", language
         data["voice"] = fallback["voice"]
+        if "test_names" in fallback:
+            data["test_names"] = fallback["test_names"]
         # make sure every test has a sentence, even if the model skipped one
         for f in analysis["results"]:
             data["tests"].setdefault(f["test"], fallback["tests"].get(f["test"], ""))

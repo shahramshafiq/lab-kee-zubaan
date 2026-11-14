@@ -62,6 +62,15 @@ PLAIN = {
 }
 
 
+# Full names as written in the lab glossary (2_medical_glossary.md). Given to the model so it never expands a
+# short name on its own (a model once wrote AST = "alanine aminotransferase", which is wrong: that is ALT).
+FULL_NAMES = {
+    "ALT": "Alanine Aminotransferase", "AST": "Aspartate Aminotransferase", "TSH": "Thyroid Stimulating Hormone",
+    "Hemoglobin": "Hemoglobin", "Platelet Count": "Platelet Count", "White Blood Cell Count": "White Blood Cell Count",
+    "Fasting Blood Sugar": "Fasting Blood Sugar",
+}
+
+
 def plain_for(test: str, status: str):
     """Return the (measures, meaning) sentences for a test and status."""
     entry = PLAIN.get(test)
