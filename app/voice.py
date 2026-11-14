@@ -34,20 +34,70 @@ class VoiceUnavailable(Exception):
     """Safe to show: the speech service did not answer. The page then uses the browser voice."""
 
 
+# Optional very fast English voice on Groq (about 0.3 s). It needs the account owner to accept the model's terms in the
+# Groq console once. Until then (or if it ever fails) we silently use the Edge voice.
+GROQ_TTS_MODEL = os.getenv("GROQ_TTS_MODEL", "canopylabs/orpheus-v1-english")
+GROQ_TTS_VOICE = os.getenv("GROQ_TTS_VOICE", "hannah")
+_groq_tts_working = True
+
+
+def _use_groq(language: str) -> bool:
+    wanted = os.getenv("TTS_ENGLISH_PROVIDER", "edge").lower() == "groq"
+    return wanted and _groq_tts_working and language in ("en", "roman_urdu") and bool(os.getenv("GROQ_API_KEY"))
+
+
+def _groq_tts(text: str) -> bytes:
+    """Blocking call. Returns wav audio, or b'' when this voice cannot be used (and stops trying)."""
+    global _groq_tts_working
+    base = os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1").rstrip("/")
+    try:
+        r = llm.client().post(f"{base}/audio/speech", headers={"Authorization": f"Bearer {os.getenv('GROQ_API_KEY')}"},
+                              json={"model": GROQ_TTS_MODEL, "input": text[:1000], "voice": GROQ_TTS_VOICE,
+                                    "response_format": "wav"}, timeout=15)
+    except Exception:
+        log.warning("Groq voice did not answer, using the Edge voice")
+        return b""
+    if r.status_code == 200 and r.content:
+        return r.content
+    if r.status_code < 500 and r.status_code != 429:
+        _groq_tts_working = False  # for example: terms not accepted yet. Do not try again this run.
+    log.warning("Groq voice unavailable (status %d), using the Edge voice", r.status_code)
+    return b""
+
+
+def media_type(audio: bytes) -> str:
+    return "audio/wav" if audio[:4] == b"RIFF" else "audio/mpeg"
+
+
 def _cache_file(text: str, language: str) -> Path:
-    voice = VOICES.get(language, VOICES["en"])
-    key = hashlib.sha1(f"{voice}|{TTS_RATE}|{text}".encode("utf-8")).hexdigest()
-    return CACHE_DIR / f"{key}.mp3"
+    engine = "groq" if _use_groq(language) else VOICES.get(language, VOICES["en"])
+    key = hashlib.sha1(f"{engine}|{TTS_RATE}|{text}".encode("utf-8")).hexdigest()
+    return CACHE_DIR / f"{key}.audio"
 
 
 async def synth_stream(text: str, language: str) -> AsyncIterator[bytes]:
-    """Yield mp3 bytes as they are produced. Finished audio is cached for next time."""
+    """Yield audio bytes as they are produced (wav from Groq in one piece, mp3 from Edge in chunks).
+    Finished audio is cached for next time."""
     import edge_tts  # imported here so the app still starts if the package is missing
 
     cached = _cache_file(text, language)
     if cached.exists():
         yield cached.read_bytes()
         return
+    if _use_groq(language):
+        fast = await asyncio.to_thread(_groq_tts, text)
+        if fast:
+            try:
+                CACHE_DIR.mkdir(parents=True, exist_ok=True)
+                cached.write_bytes(fast)
+            except OSError:
+                log.warning("Could not write the voice cache")
+            yield fast
+            return
+        cached = _cache_file(text, language)  # the engine may have changed after a failure
+        if cached.exists():
+            yield cached.read_bytes()
+            return
     voice = VOICES.get(language, VOICES["en"])
     chunks = []
     try:

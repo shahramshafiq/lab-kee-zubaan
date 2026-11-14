@@ -185,7 +185,7 @@ async def text_to_speech(req: SpeakRequest):
         audio = await voice.synthesize(req.text, req.language)
     except voice.VoiceUnavailable as exc:
         raise HTTPException(503, str(exc))
-    return Response(content=audio, media_type="audio/mpeg")
+    return Response(content=audio, media_type=voice.media_type(audio))
 
 
 @app.get("/api/tts-stream")
@@ -204,7 +204,8 @@ async def text_to_speech_stream(text: str = Query(..., min_length=1, max_length=
         async for part in stream:
             yield part
 
-    return StreamingResponse(chunks(), media_type="audio/mpeg", headers={"Cache-Control": "private, max-age=3600"})
+    return StreamingResponse(chunks(), media_type=voice.media_type(first),
+                             headers={"Cache-Control": "private, max-age=3600"})
 
 
 @app.get("/api/warmup")
