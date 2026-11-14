@@ -1,0 +1,19 @@
+# Render blueprint: New + > Blueprint > pick this repo. Then paste the two keys when it asks.
+services:
+  - type: web
+    name: lab-kee-zubaan
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: PROVIDER_ORDER
+        value: groq,gemini
+      - key: GROQ_API_KEY
+        sync: false          # asked for in the dashboard, never stored in the repo
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: LLM_MAX_CALLS_PER_HOUR
+        value: "1500"
+      - key: TTS_PREWARM
+        value: "false"
