@@ -176,6 +176,34 @@ def _parse_sex(raw: str) -> Optional[str]:
     return None
 
 
+AGE_ANY = re.compile(r"(?:^|[^A-Za-z])(?:patient[ ]+)?age(?:[ ]*[(]years[)])?[ ]*[:=-][ ]*(\d{1,3}[ ]*(?:years?|yrs?|yr|months?|mths?|mos?|weeks?|wks?|days?|y)?)(?![A-Za-z])", re.I)
+SEX_ANY = re.compile(r"(?:^|[^A-Za-z])(?:biological[ ]+)?(?:sex|gender)[ ]*[:=-][ ]*(male|female|m|f)(?![A-Za-z])", re.I)
+AGE_SEX_ANY = re.compile(r"age[ ]*[/&][ ]*(?:sex|gender)[ ]*[:=-][ ]*(\d{1,3})[ ]*(?:years?|yrs?|y)?[ ]*[/,][ ]*(male|female|m|f)(?![A-Za-z])", re.I)
+
+
+def _demographics_anywhere(text: str, p: "Patient") -> None:
+    """Age and sex written inside a longer line ('Patient name: A. Khan   Age: 42 years   Sex: Female'), as PDFs and photos
+    often give them. Only used when the line-by-line reading did not find them."""
+    body = text
+    for line in text.splitlines():
+        if APPENDIX.match(line):
+            body = text[:text.index(line)]
+            break
+    if p.age is None:
+        m = AGE_SEX_ANY.search(body)
+        if m:
+            p.age_raw, p.age = m.group(1), int(m.group(1))
+            p.sex_raw, p.sex = m.group(2), _parse_sex(m.group(2))
+        else:
+            m = AGE_ANY.search(body)
+            if m:
+                p.age_raw, p.age = m.group(1).strip()[:40], _parse_age(m.group(1))
+    if p.sex is None:
+        m = SEX_ANY.search(body)
+        if m:
+            p.sex_raw, p.sex = m.group(1), _parse_sex(m.group(1))
+
+
 def parse_report(text: str, source: str = "report") -> Patient:
     p = Patient(source=source)
     pending_name = None
@@ -265,5 +293,6 @@ def parse_report(text: str, source: str = "report") -> Patient:
             pending_name = None
         elif not META_WORDS.search(key):
             add(key, _parse_value(value), number, raw_line, value)
+    _demographics_anywhere(text, p)
     log.info("Parsed %s: %d results, age=%s sex=%s", source, len(p.results), p.age, p.sex)
     return p

@@ -252,8 +252,16 @@ def ocr_lines(boxes) -> str:
     out = []
     for r in rows:
         r.sort(key=lambda i: i["x"])
-        out.append("| " + " | ".join(i["text"] for i in r) + " |" if len(r) >= 3 else "   ".join(i["text"] for i in r))
+        texts = [_split_words(i["text"]) for i in r]
+        out.append("| " + " | ".join(texts) + " |" if len(r) >= 3 else "   ".join(texts))
     return "\n".join(_respace(l) for l in out)
+
+
+def _split_words(text: str) -> str:
+    """OCR sometimes joins words ('FastingBloodSugar'). Words made only of letters get their spaces back."""
+    if len(text) > 8 and re.fullmatch(r"[A-Za-z ()]+", text):
+        return re.sub(r"(?<=[a-z])(?=[A-Z])", " ", text)
+    return text
 
 
 def _respace(line: str) -> str:
