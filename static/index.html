@@ -8,8 +8,20 @@
   <title>Lab Kee Zubaan | Your lab report in simple words</title>
   <link rel="preload" href="/static/fonts/noto-nastaliq-urdu-arabic-400.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/static/style.css">
-  <link rel="stylesheet" href="/static/night.css">
+  <link rel="stylesheet" href="/static/theme.css">
   <link rel="stylesheet" href="/static/intro.css">
+  <script>
+    // Theme: ?theme=ivory | ink | night in the address picks one and remembers it. Ivory (light, classic) is the default.
+    (function () {
+      var name = "ivory";
+      try {
+        var q = /[?&]theme=(ivory|ink|night)/.exec(location.search);
+        if (q) localStorage.setItem("lz-theme", q[1]);
+        name = localStorage.getItem("lz-theme") || name;
+      } catch (err) { var m = /[?&]theme=(ivory|ink|night)/.exec(location.search); if (m) name = m[1]; }
+      document.documentElement.setAttribute("data-theme", name);
+    })();
+  </script>
   <script>
     // The doors welcome (dark doors, logo, Enter) shows on EVERY visit. People who prefer less motion get the same
     // screen with a soft fade instead of sliding doors. Add ?nointro to the address to skip it. If the welcome code
@@ -38,6 +50,12 @@
       <button id="enter" class="enter">Enter</button>
       <span class="intro-bar" aria-hidden="true"><i></i></span>
     </div>
+  </div>
+
+  <div class="themes" role="group" aria-label="Colour theme">
+    <button type="button" data-set-theme="ivory" title="Ivory" aria-label="Ivory theme"></button>
+    <button type="button" data-set-theme="ink" title="Ink" aria-label="Ink theme"></button>
+    <button type="button" data-set-theme="night" title="Night" aria-label="Night theme"></button>
   </div>
 
   <div class="app" id="app">

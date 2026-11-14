@@ -121,6 +121,16 @@ select, input[type=text], input[type=number], textarea { background: #fff; color
 .needs { color: #4a2a00; border-radius: 1rem; }
 .disclaimer { border-top: 1px solid var(--rule); padding-top: 1rem; }
 
+.themes { position: fixed; left: .9rem; bottom: .9rem; z-index: 40; display: flex; gap: .45rem; padding: .35rem; border-radius: 2rem;
+  background: var(--head-bg); border: 1px solid var(--head-line); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+.themes button { width: 1.35rem; height: 1.35rem; border-radius: 50%; border: 2px solid transparent; cursor: pointer; padding: 0; }
+.themes button[data-set-theme="ivory"] { background: linear-gradient(135deg, #fbf8f1 50%, #b08d3c 50%); }
+.themes button[data-set-theme="ink"] { background: linear-gradient(135deg, #121212 50%, #fe5105 50%); }
+.themes button[data-set-theme="night"] { background: linear-gradient(135deg, #050f26 50%, #00d3fb 50%); }
+.themes button[aria-pressed="true"] { border-color: var(--accent); }
+.themes button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+html.intro-on .themes { display: none; }
+
 @media (prefers-reduced-motion: reduce) {
   .result, .banner-urgent, .play.on::after, .play.busy::after { animation: none; }
   .drop, .primary { transition: none; }

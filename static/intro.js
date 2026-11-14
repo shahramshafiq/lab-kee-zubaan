@@ -49,4 +49,17 @@ document.addEventListener("lz:results", (e) => {
 });
 document.addEventListener("lz:reset", () => { if (scene) { scene.setWarm(false); scene.hold(0); } });
 
+// theme dots: switch without reloading, and tell the scene to take the new colours
+const themeColors = { ivory: "#fbf8f1", ink: "#121212", night: "#050f26" };
+function setTheme(name) {
+  root.setAttribute("data-theme", name);
+  try { localStorage.setItem("lz-theme", name); } catch (err) { /* private mode: the choice just is not remembered */ }
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute("content", themeColors[name] || "#fbf8f1");
+  document.dispatchEvent(new CustomEvent("lz:theme", { detail: name }));
+  document.querySelectorAll("[data-set-theme]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.setTheme === name)));
+}
+document.querySelectorAll("[data-set-theme]").forEach((b) => b.addEventListener("click", () => setTheme(b.dataset.setTheme)));
+setTheme(root.getAttribute("data-theme") || "ivory");
+
 window.lz = { scene };
