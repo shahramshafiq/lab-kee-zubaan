@@ -4,12 +4,13 @@ import uuid
 from pathlib import Path
 from typing import Dict, Optional
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.responses import FileResponse, Response
+from fastapi.concurrency import run_in_threadpool
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from app import chat, config
+from app import chat, config, voice
 from app.engine import analyze
 from app.explain import explain
 from app.extract import Patient, parse_report
@@ -39,6 +40,12 @@ class AnalyzeRequest(BaseModel):
 class ChatRequest(BaseModel):
     session_id: str
     message: str = Field(..., min_length=1, max_length=2000)
+    language: str = "en"
+    voice: bool = False  # True when the answer will be spoken: keep it very short
+
+
+class SpeakRequest(BaseModel):
+    text: str = Field(..., min_length=1, max_length=voice.MAX_TEXT)
     language: str = "en"
 
 
@@ -132,7 +139,32 @@ def chat_with_report(req: ChatRequest):
         return {"answer": "Thank you. I used what you told me (marked as given by you, not from the report) "
                           "and checked the results again.", "refused": False, "source": "rules",
                 "analysis": updated}
-    return chat.answer(req.message, session["analysis"], NAMES, req.language)
+    return chat.answer(req.message, session["analysis"], NAMES, req.language, voice=req.voice)
+
+
+@app.post("/api/stt")
+async def speech_to_text(audio: UploadFile = File(...), language: str = Form("en")):
+    """A recording of the patient's question, returned as text."""
+    raw = await audio.read()
+    if not raw:
+        raise HTTPException(400, "The recording is empty.")
+    if len(raw) > voice.MAX_AUDIO_BYTES:
+        raise HTTPException(413, "The recording is too long (limit 5 MB).")
+    try:
+        text = await run_in_threadpool(voice.transcribe, raw, audio.filename or "voice.webm", language)
+    except voice.VoiceUnavailable as exc:
+        raise HTTPException(503, str(exc))
+    return {"text": text}
+
+
+@app.post("/api/tts")
+async def text_to_speech(req: SpeakRequest):
+    """Spoken audio (mp3) for a text we wrote. If this fails the page uses the browser voice."""
+    try:
+        audio = await voice.synthesize(req.text, req.language)
+    except voice.VoiceUnavailable as exc:
+        raise HTTPException(503, str(exc))
+    return Response(content=audio, media_type="audio/mpeg")
 
 
 STATIC = Path(__file__).resolve().parent.parent / "static"

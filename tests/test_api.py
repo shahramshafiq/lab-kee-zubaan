@@ -71,6 +71,31 @@ def test_missing_age_and_sex_given_up_front():
     assert data["results"][0]["status"] == "high"  # fasting sugar 110, normal is 70 to 99
 
 
+def test_tts_rejects_empty_and_too_long_text():
+    assert client.post("/api/tts", json={"text": "", "language": "en"}).status_code == 422
+    assert client.post("/api/tts", json={"text": "x" * 2000, "language": "en"}).status_code == 422
+
+
+def test_stt_rejects_empty_recording():
+    r = client.post("/api/stt", files={"audio": ("a.webm", b"", "audio/webm")}, data={"language": "en"})
+    assert r.status_code == 400
+
+
+def test_stt_rejects_huge_recording():
+    big = b"0" * 5_000_001
+    r = client.post("/api/stt", files={"audio": ("a.webm", big, "audio/webm")}, data={"language": "en"})
+    assert r.status_code == 413
+
+
+def test_chat_answer_with_invented_number_is_replaced(monkeypatch):
+    from app import chat as chat_module
+
+    sid = analyze("P004")["session_id"]
+    monkeypatch.setattr(chat_module.llm, "ask", lambda s, u: "Your hemoglobin is 9.9, which is fine.")
+    r = client.post("/api/chat", json={"session_id": sid, "message": "Is my hemoglobin fine?"}).json()
+    assert "9.9" not in r["answer"] and r["source"] == "rules"
+
+
 def test_expired_session():
     r = client.post("/api/chat", json={"session_id": "nope", "message": "hi"})
     assert r.status_code == 404
