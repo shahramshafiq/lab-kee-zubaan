@@ -4,13 +4,13 @@ import uuid
 from pathlib import Path
 from typing import Dict, Optional
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse, Response
+from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Query, UploadFile
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.concurrency import run_in_threadpool
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from app import chat, config, observability, voice
+from app import chat, config, llm, observability, usage, voice
 from app.engine import analyze
 from app.explain import explain
 from app.extract import Patient, parse_report
@@ -59,8 +59,11 @@ def _find_report(report_id: str) -> Path:
     raise HTTPException(404, f"No report with id {report_id}")
 
 
-def _run(patient: Patient, language: str, use_ai: bool) -> Dict:
+def _run(patient: Patient, language: str, use_ai: bool, background: Optional[BackgroundTasks] = None) -> Dict:
     result = explain(analyze(patient, KB), language=language, use_ai=use_ai)
+    if background is not None:  # prepare the spoken summary now, so the Listen button plays at once
+        voice_language = language if language in voice.VOICES else "en"
+        background.add_task(voice.prewarm, result["explanation"]["voice"], voice_language)
     if len(SESSIONS) >= MAX_SESSIONS:
         SESSIONS.pop(next(iter(SESSIONS)))
     session_id = uuid.uuid4().hex
@@ -101,7 +104,7 @@ def demo_reports():
 
 
 @app.post("/api/analyze")
-def analyze_report(req: AnalyzeRequest):
+def analyze_report(req: AnalyzeRequest, background: BackgroundTasks):
     if req.report_text:
         text, source = req.report_text, "pasted report"
     elif req.report_id:
@@ -113,11 +116,12 @@ def analyze_report(req: AnalyzeRequest):
     if not patient.results:
         raise HTTPException(422, "I could not find any test results in this report.")
     _apply_overrides(patient, req.age, req.sex)
-    return _run(patient, req.language, req.use_ai)
+    return _run(patient, req.language, req.use_ai, background)
 
 
 @app.post("/api/analyze-file")
-async def analyze_file(file: UploadFile = File(...), language: str = "en", use_ai: bool = True):
+async def analyze_file(background: BackgroundTasks, file: UploadFile = File(...), language: str = "en",
+                       use_ai: bool = True):
     raw = await file.read(MAX_UPLOAD + 1)
     if len(raw) > MAX_UPLOAD:
         raise HTTPException(413, "File is too big (limit 5 MB).")
@@ -136,7 +140,7 @@ async def analyze_file(file: UploadFile = File(...), language: str = "en", use_a
     patient = parse_report(text, file.filename or "upload")
     if not patient.results:
         raise HTTPException(422, "I could not find any test results in this file.")
-    return _run(patient, language, use_ai)
+    return _run(patient, language, use_ai, background)
 
 
 @app.post("/api/chat")
@@ -182,6 +186,43 @@ async def text_to_speech(req: SpeakRequest):
     except voice.VoiceUnavailable as exc:
         raise HTTPException(503, str(exc))
     return Response(content=audio, media_type="audio/mpeg")
+
+
+@app.get("/api/tts-stream")
+async def text_to_speech_stream(text: str = Query(..., min_length=1, max_length=voice.MAX_TEXT), language: str = "en"):
+    """Same audio, streamed: the browser starts playing at the first chunk. Used by the page."""
+    stream = voice.synth_stream(text, language if language in voice.VOICES else "en")
+    try:
+        first = await stream.__anext__()  # fail now (503) instead of halfway through a response
+    except voice.VoiceUnavailable as exc:
+        raise HTTPException(503, str(exc))
+    except StopAsyncIteration:
+        raise HTTPException(503, "The voice service returned no sound.")
+
+    async def chunks():
+        yield first
+        async for part in stream:
+            yield part
+
+    return StreamingResponse(chunks(), media_type="audio/mpeg", headers={"Cache-Control": "private, max-age=3600"})
+
+
+@app.get("/api/warmup")
+async def warm_up():
+    """Called when the page opens: opens the AI connection and prepares a first voice, so the first real use is fast."""
+    ai = await run_in_threadpool(llm.warm_up)
+    try:
+        await voice.synthesize("Ready.", "en")
+        speech = True
+    except voice.VoiceUnavailable:
+        speech = False
+    return {"ai": ai, "speech": speech}
+
+
+@app.get("/api/usage")
+def ai_usage():
+    """What the AI services were used for: calls, tokens, estimated cost, calls left this hour."""
+    return usage.snapshot()
 
 
 STATIC = Path(__file__).resolve().parent.parent / "static"

@@ -1,15 +1,18 @@
 """Speech in and speech out. The same checked text is what gets spoken, the voice never adds anything.
 
 Speech to text: Groq Whisper (free tier). Text to speech: Microsoft Edge neural voices through edge-tts.
-If either is down the web page falls back to the browser's own speech, so voice never blocks the report.
+Speed: audio is streamed, so playback starts at the first chunk; the spoken summary is prepared in the
+background right after a report is analysed (so Listen is instant); finished audio is cached on disk;
+and the HTTP connection is kept warm. If either service is down the page falls back to the browser's voice.
 """
 import asyncio
 import hashlib
 import logging
 import os
 from pathlib import Path
+from typing import AsyncIterator
 
-import httpx
+from app import llm
 
 log = logging.getLogger(__name__)
 
@@ -31,35 +34,56 @@ class VoiceUnavailable(Exception):
     """Safe to show: the speech service did not answer. The page then uses the browser voice."""
 
 
-async def synthesize(text: str, language: str) -> bytes:
-    import edge_tts  # imported here so the app still starts if the package is missing
-
+def _cache_file(text: str, language: str) -> Path:
     voice = VOICES.get(language, VOICES["en"])
     key = hashlib.sha1(f"{voice}|{TTS_RATE}|{text}".encode("utf-8")).hexdigest()
-    cached = CACHE_DIR / f"{key}.mp3"
+    return CACHE_DIR / f"{key}.mp3"
+
+
+async def synth_stream(text: str, language: str) -> AsyncIterator[bytes]:
+    """Yield mp3 bytes as they are produced. Finished audio is cached for next time."""
+    import edge_tts  # imported here so the app still starts if the package is missing
+
+    cached = _cache_file(text, language)
     if cached.exists():
-        return cached.read_bytes()
-
-    async def run() -> bytes:
-        chunks = []
-        async for part in edge_tts.Communicate(text, voice, rate=TTS_RATE).stream():
-            if part["type"] == "audio":
-                chunks.append(part["data"])
-        return b"".join(chunks)
-
+        yield cached.read_bytes()
+        return
+    voice = VOICES.get(language, VOICES["en"])
+    chunks = []
     try:
-        audio = await asyncio.wait_for(run(), timeout=25)
+        async with asyncio.timeout(25):
+            async for part in edge_tts.Communicate(text, voice, rate=TTS_RATE).stream():
+                if part["type"] == "audio":
+                    chunks.append(part["data"])
+                    yield part["data"]
     except Exception as exc:  # network, service change, timeout
         log.warning("Text to speech failed: %s", type(exc).__name__)
-        raise VoiceUnavailable("The voice service is not available right now.") from exc
+        if not chunks:
+            raise VoiceUnavailable("The voice service is not available right now.") from exc
+        return  # some audio was already sent, stop cleanly
+    if chunks:
+        try:
+            CACHE_DIR.mkdir(parents=True, exist_ok=True)
+            cached.write_bytes(b"".join(chunks))
+        except OSError:
+            log.warning("Could not write the voice cache")
+
+
+async def synthesize(text: str, language: str) -> bytes:
+    audio = b"".join([c async for c in synth_stream(text, language)])
     if not audio:
         raise VoiceUnavailable("The voice service returned no sound.")
-    try:
-        CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        cached.write_bytes(audio)
-    except OSError:
-        log.warning("Could not write the voice cache")
     return audio
+
+
+def prewarm(text: str, language: str) -> None:
+    """Prepare the audio in the background (blocking call, run it from a background task or thread)."""
+    if os.getenv("TTS_PREWARM", "true").lower() not in ("1", "true", "yes"):
+        return
+    try:
+        asyncio.run(synthesize(text, language))
+    except Exception:
+        log.info("Voice prewarm skipped")
 
 
 def transcribe(audio: bytes, filename: str, language: str) -> str:
@@ -69,7 +93,7 @@ def transcribe(audio: bytes, filename: str, language: str) -> str:
     base = os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1").rstrip("/")
     for attempt in range(2):
         try:
-            r = httpx.post(
+            r = llm.client().post(
                 f"{base}/audio/transcriptions",
                 headers={"Authorization": f"Bearer {key}"},
                 data={"model": STT_MODEL, "language": STT_LANG.get(language, "en"), "response_format": "json",
@@ -77,7 +101,7 @@ def transcribe(audio: bytes, filename: str, language: str) -> str:
                 files={"file": (filename or "voice.webm", audio, "application/octet-stream")},
                 timeout=30,
             )
-        except (httpx.TimeoutException, httpx.TransportError):
+        except Exception:
             log.warning("Speech recognition timed out (attempt %d)", attempt + 1)
             continue
         if r.status_code == 200:
