@@ -152,6 +152,11 @@ summary { cursor: pointer; padding: .65rem 0; }
   .play { flex-direction: row; justify-content: center; gap: .8rem; }
   .hero h2 { font-size: 1.45rem; }
   .brand p { display: none; }
+  /* the question box: the text box gets a full row of its own, the microphone and Send sit under it */
+  .ask { flex-wrap: wrap; }
+  .ask input { flex: 1 1 100%; order: -1; }
+  .ask .primary { flex: 1; min-height: 3.8rem; }
+  .ask .mic { width: 3.8rem; height: 3.8rem; }
 }
 @media (prefers-reduced-motion: reduce) { .play.on .bars i, .play.busy .bars i, .mic.rec, .spin { animation: none; } }
 @media print {
