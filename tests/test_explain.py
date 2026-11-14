@@ -53,6 +53,17 @@ def test_diagnosis_is_rejected(p004):
     assert check_text(bad, p004) == "sounds like a diagnosis"
 
 
+def test_harmless_you_have_is_allowed_but_disease_claims_are_not(p004):
+    ok = json.loads(good_answer())
+    ok["summary"] = "You have a low platelet count at 120000. Low hemoglobin can mean anemia. See a doctor today."
+    assert check_text(ok, p004) is None  # naming a possible cause in general is fine
+    for bad_text in ("You may have anemia.", "Aap ko diabetes hai.", "He is suffering from jaundice.",
+                     "آپ کو یرقان ہے"):
+        bad = json.loads(good_answer())
+        bad["tests"]["Hemoglobin"] = bad_text
+        assert check_text(bad, p004) == "sounds like a diagnosis", bad_text
+
+
 def test_missing_urgent_warning_is_rejected(p004):
     bad = json.loads(good_answer())
     bad["summary"] = "Everything looks fine."

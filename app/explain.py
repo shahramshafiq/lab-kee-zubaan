@@ -30,9 +30,16 @@ SYSTEM = (
 )
 
 # phrases that sound like a diagnosis
+_DISEASES = (r"(?:anemi\w*|anaemi\w*|diabet\w*|hepatitis|cirrhosis|hypothyroid\w*|hyperthyroid\w*|thyroid (?:disease|disorder)|"
+             r"kidney (?:disease|failure|damage)|liver (?:disease|damage|failure)|infection|cancer|leuk[a]?emi\w*|thrombocytop\w*|"
+             r"thrombocytos\w*|leukocytosis|leukopeni\w*|jaundice|hyperglyc\w*|hypoglyc\w*|dyslipid\w*|hypercholesterol\w*)")
 DIAGNOSIS = re.compile(
-    r"\b(you have|you are suffering|you are diabetic|patient has|has been diagnosed|diagnosed with|suffering from|"
-    r"you do not have|you don't have)\b", re.I)
+    r"\b(?:you|patient|he|she)\s+(?:(?:may|might|could|probably|likely|definitely)\s+)?"
+    r"(?:have|has|are|is|suffer(?:s|ing)? from|(?:do not|don't) have)\s+(?:\w+\s+){0,2}" + _DISEASES
+    + r"|\b(?:diagnosed with|diagnosis of|suffering from)\b"
+    + r"|\b(?:aap\s*ko|aapko|mareez\s+ko)\b.{0,25}\b(?:diabetes|anemia|anaemia|hepatitis|jaundice|cancer|infection)\b.{0,12}\bhai\b"
+    + "|آپ کو.{0,25}(?:ذیابیطس|خون کی کمی|یرقان|ہیپاٹائٹس|کینسر).{0,12}ہے",
+    re.I)
 _DIGITS = str.maketrans("٠١٢٣٤٥٦٧٨٩"
                         "۰۱۲۳۴۵۶۷۸۹", "01234567890123456789")
 
