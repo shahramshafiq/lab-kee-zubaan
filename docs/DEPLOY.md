@@ -21,7 +21,16 @@ The app is a long-running Python server with in-memory sessions and calls that c
 
 Current free-tier rules change often. Check them before relying on one. If the evaluation might call the live link automatically, a sleeping service can time out, so keep it awake (a free uptime pinger on `/api/health` every few minutes) and test it first.
 
-## Fastest path: Render blueprint (about 5 minutes)
+## No card? Hugging Face Spaces (free, Docker)
+Render's Blueprint asks for a payment card. Hugging Face Spaces runs a Docker app for free without one.
+1. Run `powershell -File scripts\prepare_hf_space.ps1`. It builds a clean folder `C:\dev\hf-space` (no keys, no tests) with the Space settings header on the README.
+2. Create a free account at huggingface.co, then New > Space. Name it `lab-kee-zubaan`, choose **Docker** > **Blank**, Free CPU, **Public**, and create it.
+3. In the Space, Files > Add file > Upload files. Drag in the CONTENTS of `C:\dev\hf-space` (the folders `app`, `static`, `lab_reports` and the files `Dockerfile`, `README.md`, `requirements.txt`) and commit.
+4. Space > Settings > Variables and secrets: add secrets `GROQ_API_KEY` and `GEMINI_API_KEY`, and variables `PROVIDER_ORDER=groq,gemini` and `LLM_MAX_CALLS_PER_HOUR=1500`. Then Settings > Factory rebuild.
+5. When the Space says Running, the direct link is `https://USERNAME-lab-kee-zubaan.hf.space`. Test it with `python scripts/smoke_test.py --base <that link> --ai --voice`.
+Free Spaces sleep after a long idle time and wake on the next visit. The text-to-speech service is reached from the host's network; if a host is blocked the page falls back to the browser's voice.
+
+## Fastest path: Render blueprint (about 5 minutes, needs a card)
 `render.yaml` in the repo describes the service, so there is nothing to configure by hand.
 1. Sign in at render.com with the GitHub account that owns the repo, and allow it to read the repo.
 2. New + > Blueprint > choose `lab-kee-zubaan` > Apply.
