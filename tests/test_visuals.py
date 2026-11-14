@@ -32,7 +32,7 @@ def test_welcome_can_never_trap_the_user():
     html = read("index.html")
     assert "intro-on" in html and "setTimeout" in html  # the page opens itself even if the welcome code fails
     assert 'id="enter"' in html and "prefers-reduced-motion" in html
-    assert "prefers-reduced-motion" in read("intro.css") and "prefers-reduced-motion" in read("night.css")
+    assert "intro-reduced" in read("intro.css") and "prefers-reduced-motion" in read("night.css")
     js = read("intro.js")
     assert "4200" in js  # opens by itself after a few seconds
     # the welcome shows on every visit (the user asked for this), also with reduced motion (as a soft fade)
