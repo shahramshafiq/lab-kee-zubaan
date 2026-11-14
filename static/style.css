@@ -34,6 +34,9 @@ main:focus, h2:focus { outline: none; }
 /* Urdu: proper Nastaliq script, taller lines, right to left */
 .ur-text { font-family: "Noto Nastaliq Urdu", "Jameel Noori Nastaleeq", "Alvi Nastaleeq", "Noto Naskh Arabic", serif; }
 .rtl { direction: rtl; text-align: right; font-family: "Noto Nastaliq Urdu", "Jameel Noori Nastaleeq", "Alvi Nastaleeq", "Noto Naskh Arabic", serif; line-height: 2.25; }
+/* a heading or a chip is one short line: Nastaliq still needs room, but less than a paragraph, or the pill looks swollen */
+h3.rtl, .chip.rtl { line-height: 1.85; }
+.chip.rtl { min-width: 3.6rem; text-align: center; padding-top: .3rem; padding-bottom: 0; }
 
 /* ---------- header ---------- */
 .top { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: .8rem max(1rem, calc((100% - var(--page)) / 2 + 1rem)); background: linear-gradient(120deg, var(--sapphire-dark), var(--sapphire)); color: #fff; }
@@ -105,6 +108,9 @@ button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-
 .result.low, .result.high { border-left-color: #f0a020; }
 .result.urgent { border-left-color: var(--bad); background: #fffafb; }
 .result header { display: flex; justify-content: space-between; align-items: center; gap: .6rem; flex-wrap: wrap; }
+html[lang="ur"] .result header { direction: rtl; }  /* in Urdu the test name sits on the right and the chip on the left */
+html[lang="ur"] .result .value { justify-content: flex-end; }  /* the number and its range line up with the Urdu text; the number itself still reads left to right */
+html[lang="ur"] .result .range { text-align: right; }
 .result h3 { margin: 0; font-size: 1.1rem; }
 .chip { display: inline-block; padding: .1rem .8rem; border-radius: 2rem; font-size: var(--small); font-weight: 700; background: var(--info-bg); color: var(--info); }
 .chip.normal { background: var(--ok-bg); color: var(--ok); }
