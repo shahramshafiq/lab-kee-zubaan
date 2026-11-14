@@ -1,6 +1,7 @@
 """Web API. Thin routes only: all decisions are made in engine.py."""
 import json
 import logging
+import mimetypes
 import uuid
 from pathlib import Path
 from typing import Dict, Optional
@@ -8,6 +9,7 @@ from typing import Dict, Optional
 from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.concurrency import run_in_threadpool
+from starlette.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -22,8 +24,24 @@ from app.pdfread import PdfProblem, pdf_to_text
 setup_logging()
 log = logging.getLogger("app")
 
+mimetypes.add_type("application/javascript", ".js")  # some Windows setups say text/plain, which breaks module scripts
+mimetypes.add_type("font/woff2", ".woff2")
+
+
+class PageGZip(GZipMiddleware):
+    """Compress the page files (the 3D scene is about 535 KB, 133 KB compressed) but never the API: compressing a
+    streamed answer would hold sentences back and slow the voice."""
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http" and scope["path"].startswith("/api/"):
+            await self.app(scope, receive, send)
+            return
+        await super().__call__(scope, receive, send)
+
+
 app = FastAPI(title="Lab Kee Zubaan", version="0.1")
 app.middleware("http")(observability.middleware)
+app.add_middleware(PageGZip, minimum_size=1024)
 KB: KnowledgeBase = load_kb(config.DATA_DIR)
 NAMES = chat.other_patient_names(config.DATA_DIR)
 SESSIONS: Dict[str, Dict] = {}
