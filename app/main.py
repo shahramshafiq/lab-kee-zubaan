@@ -10,7 +10,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from app import chat, config, voice
+from app import chat, config, observability, voice
 from app.engine import analyze
 from app.explain import explain
 from app.extract import Patient, parse_report
@@ -21,6 +21,7 @@ setup_logging()
 log = logging.getLogger("app")
 
 app = FastAPI(title="Lab Kee Zubaan", version="0.1")
+app.middleware("http")(observability.middleware)
 KB: KnowledgeBase = load_kb(config.DATA_DIR)
 NAMES = chat.other_patient_names(config.DATA_DIR)
 SESSIONS: Dict[str, Dict] = {}
@@ -79,6 +80,12 @@ def _apply_overrides(patient: Patient, age: Optional[int], sex: Optional[str]) -
 @app.get("/api/health")
 def health():
     return {"ok": True, "ranges": len(KB.ranges), "urgent_rules": len(KB.urgent)}
+
+
+@app.get("/api/metrics")
+def metrics():
+    """Simple counters: requests, errors, refusals, rate limits, AI fallbacks."""
+    return dict(observability.METRICS)
 
 
 @app.get("/api/demo-reports")
