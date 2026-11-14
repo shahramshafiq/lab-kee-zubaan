@@ -51,6 +51,7 @@ def test_cards_set_their_own_text_colour_in_every_theme():
     # the 3D scene takes its colours from the theme, so it matches whichever theme is chosen
     assert "--scene-a" in css and "--scene-a" in (Path(__file__).resolve().parent.parent / "tools" / "scene.src.js").read_text(encoding="utf-8")
     assert 'href="/static/theme.css"' in read("index.html")
+    assert '"ivory"' in read("index.html")  # ivory is the page theme
 
 
 def test_page_does_not_mention_any_event():
