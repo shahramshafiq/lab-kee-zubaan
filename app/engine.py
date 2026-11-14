@@ -35,7 +35,7 @@ def _missing(patient: Patient, rules: List[RangeRule], strict: bool) -> List[str
     return missing
 
 
-def _urgent_check(canonical: str, value: Decimal, unit_raw: str, kb: KnowledgeBase):
+def _urgent_check(canonical: str, value: Decimal, unit_raw: str, kb: KnowledgeBase, comparator: str = ""):
     """Return (rule, std value) if the value hits or passes a dangerous threshold."""
     for rule in kb.urgent:
         if rule.test != canonical:
@@ -45,7 +45,12 @@ def _urgent_check(canonical: str, value: Decimal, unit_raw: str, kb: KnowledgeBa
             continue
         std = converted[0]
         # "hit or pass": a value exactly on the threshold counts as urgent (the safe side).
-        hit = std <= rule.threshold if rule.trigger == "less" else std >= rule.threshold
+        if not comparator:
+            hit = std <= rule.threshold if rule.trigger == "less" else std >= rule.threshold
+        elif comparator in ("<", "<="):   # '<10': every value below it is past a 'less than' limit of 50
+            hit = rule.trigger == "less" and std <= rule.threshold
+        else:                             # '>1000': every value above it is past a 'greater than' limit of 1000
+            hit = rule.trigger == "greater" and std >= rule.threshold
         if hit:
             return rule, std
     return None, None
@@ -134,8 +139,8 @@ def classify(res: RawResult, patient: Patient, kb: KnowledgeBase, strict: bool, 
         return out
 
     # 1) danger check first: it does not depend on age or sex
-    if res.value is not None and not res.comparator:
-        urgent_rule, std = _urgent_check(canonical, res.value, res.unit, kb)
+    if res.value is not None:
+        urgent_rule, std = _urgent_check(canonical, res.value, res.unit, kb, res.comparator)
         if urgent_rule:
             out.update(
                 status="urgent",
@@ -202,6 +207,8 @@ def _attach_range(out: Dict, res: RawResult, patient: Patient, rules: List[Range
         return
 
     if res.value is None or res.comparator:
+        if out["status"] == "urgent":
+            return  # '<10' or '>1000' is past a danger limit: keep the urgent label and its reason
         out["reason"] = ("cannot be classified from the files: the value is not an exact number "
                          f"({res.comparator or ''}{res.qualitative or ''}).")
         out["next_step"], out["next_code"] = ("A result such as '<5' or a word result needs a doctor's reading. Ask "

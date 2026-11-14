@@ -31,7 +31,7 @@ TIME_UNITS = {"hours", "hour", "hrs", "hr", "h", "minutes", "minute", "mins", "m
               "weeks", "months", "years", "yrs", "yr"}  # a duration is never a lab result
 NO_RESULT = re.compile(r"^(pending|awaited|in progress|n/?a|na|nr|none|not (?:available|done|reported|performed|tested)|"
                        r"unavailable|-+|—)$|hem[o]?lyz|haemolys|hemolys|insufficient|clotted|lipemic|result unavailable|"
-                       r"sample (?:rejected|not)|cancel|invalid|error", re.I)
+                       r"sample (?:rejected|not)|cancel|invalid|\berror\b", re.I)
 VALUE_RE = re.compile(r"^(?P<cmp>[<>]=?)?\s*(?P<num>\d+(?:\.\d+)?)\s*(?P<unit>.*)$")
 # 'Hemoglobin 13.5 g/dL' or 'Hemoglobin 13.5 g/dL 12.1 - 15.1 Normal' (PDF tables). A unit is required here.
 PLAIN_RE = re.compile(
@@ -87,6 +87,19 @@ def _odd_reason(text: str) -> str:
     return ""
 
 
+FLAG_WORDS = r"(?:HH|LL|H|L|HIGH|LOW|CRITICAL|CRIT|ABNORMAL|NORMAL|URGENT|PANIC|ALERT|FLAG|REF|REFERENCE|RANGE|NORMAL RANGE)"
+
+
+def _clean_unit(unit: str) -> str:
+    """'g/dL (L)', 'g/dL [13.8-17.2]', 'g/dL  CRITICAL', 'mg/dL 70 - 99 H' -> just the unit. The lab's own flags are
+    never trusted or used: the status always comes from the lab files."""
+    u = re.sub(r"[\(\[\{][^\)\]\}]*[\)\]\}]?", " ", unit or "")           # brackets and what is inside
+    u = re.split(r"\s+\d+(?:\.\d+)?\s*[-–]\s*\d|\s+[<>]=?\s*\d", u)[0]   # a reference range after the unit
+    u = re.sub(r"[↑↓*!]+", " ", u)
+    u = re.sub(r"\s+(?:" + FLAG_WORDS + r")\b.*$", "", u.strip(), flags=re.I)  # a flag word after the unit
+    return re.sub(r"\s+", " ", u).strip()
+
+
 COMMA_NUMBER = re.compile(r"^[<>]?=?\s*\d{1,3},\d")
 SCI_RE = re.compile(r"^(?P<cmp>[<>]=?)?\s*(?P<num>\d+(?:\.\d+)?)\s*[eE](?P<exp>[+-]?\d{1,2})\s*(?P<unit>.*)$")
 
@@ -98,10 +111,11 @@ def _parse_value(text: str):
         return None  # 1,2 or 1,200 could be a decimal or a thousand: never guess
     sci = SCI_RE.match(text)
     if sci:  # 7.5E3 is 7500
-        return Decimal(sci.group("num")).scaleb(int(sci.group("exp"))), sci.group("unit").strip(), None, sci.group("cmp") or ""
+        return (Decimal(sci.group("num")).scaleb(int(sci.group("exp"))), _clean_unit(sci.group("unit")), None,
+                sci.group("cmp") or "")
     m = VALUE_RE.match(text)
     if m:
-        return Decimal(m.group("num")), m.group("unit").strip(), None, m.group("cmp") or ""
+        return Decimal(m.group("num")), _clean_unit(m.group("unit")), None, m.group("cmp") or ""
     if text.lower().strip(". ") in QUALITATIVE:
         return None, "", text.strip(". "), ""
     return None
@@ -136,8 +150,21 @@ def _table_value(cells):
 
 
 def _parse_age(raw: str) -> Optional[int]:
+    """Age in whole years. '18 months' is 1, '3 weeks' is 0 (never read as 18 or 3 years)."""
     m = re.search(r"\d+", raw)
-    return int(m.group()) if m else None
+    if not m:
+        return None
+    n = int(m.group())
+    low = raw.lower()
+    if re.search(r"year|yr|\by\b", low):
+        return n
+    if re.search(r"month|mth|\bmos?\b", low):
+        return n // 12
+    if re.search(r"week|wk", low):
+        return n // 52
+    if re.search(r"\bdays?\b", low):
+        return n // 365
+    return n
 
 
 def _parse_sex(raw: str) -> Optional[str]:
@@ -222,7 +249,7 @@ def parse_report(text: str, source: str = "report") -> Patient:
             p.age_raw, p.age = value[:40], _parse_age(value)
         elif k.replace(" ", "") in ("age/sex", "sex/age", "age&sex", "age,sex", "age/gender", "gender/age"):
             m_age = re.search(r"\d{1,3}", value)
-            m_sex = re.search(r"(male|female|m|f)", value, re.I)
+            m_sex = re.search(r"\b(male|female|m|f)\b", value, re.I)
             if m_age:
                 p.age_raw, p.age = value[:40], int(m_age.group())
             if m_sex:
