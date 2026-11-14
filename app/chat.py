@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Callable, Dict, Optional, Set, Tuple
 
 from app import llm
-from app.explain import LANGUAGES, _facts, deidentify
+from app.explain import LANGUAGES, _facts, check_answer, deidentify
 from app.extract import parse_report
 
 log = logging.getLogger(__name__)
@@ -77,14 +77,21 @@ def fallback_answer(question: str, analysis: Dict) -> str:
 
 
 def answer(question: str, analysis: Dict, all_names: Set[str], language: str = "en",
-           asker: Callable = llm.ask) -> Dict:
-    """Return {'answer', 'refused', 'source'}. Never raises."""
+           asker: Optional[Callable] = None, voice: bool = False) -> Dict:
+    """Return {'answer', 'refused', 'source'}. Never raises. voice=True keeps the answer very short."""
     if asks_about_someone_else(question, analysis["patient"], all_names):
         return {"answer": REFUSAL, "refused": True, "source": "rules"}
     try:
         prompt = (f"Answer in {LANGUAGES.get(language, LANGUAGES['en'])}.\n"
                   f"Patient: {json.dumps(deidentify(analysis)['patient'])}\n"
                   f"Facts: {json.dumps(_facts(analysis))}\nQuestion: {question}")
-        return {"answer": asker(CHAT_SYSTEM, prompt).strip(), "refused": False, "source": "ai"}
+        if voice:
+            prompt += "\nThis answer will be spoken aloud to an older person: at most 40 words, short sentences."
+        text = (asker or llm.ask)(CHAT_SYSTEM, prompt).strip()
+        problem = check_answer(text, analysis)
+        if problem:  # same safety check as the explanation: no invented numbers, no diagnosis
+            log.warning("Chat answer rejected: %s", problem)
+            return {"answer": fallback_answer(question, analysis), "refused": False, "source": "rules"}
+        return {"answer": text, "refused": False, "source": "ai"}
     except llm.LLMUnavailable:
         return {"answer": fallback_answer(question, analysis), "refused": False, "source": "rules"}

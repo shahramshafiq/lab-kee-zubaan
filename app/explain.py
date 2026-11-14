@@ -88,6 +88,12 @@ def check_text(data: Dict, analysis: Dict) -> Optional[str]:
     return None
 
 
+def check_answer(text: str, analysis: Dict) -> Optional[str]:
+    """Same safety check for a chat answer: no invented numbers, no diagnosis."""
+    return check_text({"summary": "", "voice": "", "tests": {"x": text}, "questions": []},
+                      {**analysis, "summary": {**analysis["summary"], "urgent": False}})
+
+
 def _valid_shape(data: Dict) -> bool:
     return (isinstance(data.get("summary"), str) and isinstance(data.get("tests"), dict)
             and isinstance(data.get("questions"), list) and 3 <= len(data["questions"]) <= 5)
