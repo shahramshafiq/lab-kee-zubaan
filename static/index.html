@@ -6,6 +6,7 @@
   <meta name="description" content="Understand your lab report in simple words, and listen to it in English or Urdu.">
   <meta name="theme-color" content="#fbf8f1">
   <title>Lab Kee Zubaan | Your lab report in simple words</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b2a5b'/%3E%3Cpath d='M8 22V14M13 22V9M18 22V12M23 22V17' stroke='%23d4b05a' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
   <link rel="preload" href="/static/fonts/noto-nastaliq-urdu-arabic-400.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/static/style.css">
   <link rel="stylesheet" href="/static/theme.css">
@@ -73,10 +74,10 @@
       <label class="drop" id="drop" for="file-input">
         <span class="drop-icon" aria-hidden="true">+</span>
         <strong>Drop your report here</strong>
-        <span>or click to choose a file (PDF, .txt or .md)</span>
+        <span>or click to choose a file (PDF, Word, Excel, photo or text)</span>
         <span id="file-name" class="file-name"></span>
       </label>
-      <input type="file" id="file-input" accept=".pdf,.txt,.md,application/pdf,text/plain,text/markdown" hidden>
+      <input type="file" id="file-input" accept=".pdf,.docx,.xlsx,.csv,.tsv,.html,.htm,.rtf,.txt,.md,.png,.jpg,.jpeg,.webp,.bmp,.tif,.tiff,image/*,application/pdf,text/plain,text/markdown" hidden>
 
       <p class="alt">
         <button class="link" id="show-paste">Paste the text instead</button>
@@ -155,6 +156,7 @@
   <footer class="foot">This tool explains numbers. It cannot diagnose. Only a licensed doctor can.</footer>
   </div>
   <audio id="player" hidden></audio>
+  <script src="/static/i18n.js"></script>
   <script src="/static/app.js"></script>
   <script type="module" src="/static/intro.js"></script>
 </body>

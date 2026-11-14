@@ -62,6 +62,8 @@ function setLanguage(lang, rerun) {
     b.classList.toggle("on", on);
     b.setAttribute("aria-pressed", on ? "true" : "false");
   });
+  window.lzLang = () => state.lang;
+  if (window.applyUI) window.applyUI(lang);
   if (rerun && state.sessionId) switchLanguage();
 }
 
@@ -88,7 +90,8 @@ document.querySelectorAll(".seg-btn").forEach((b) => b.addEventListener("click",
 function chooseFile(file) {
   state.file = file || null;
   state.input = "upload";
-  $("file-name").textContent = file ? "Selected: " + file.name : "";
+  $("file-name").textContent = file ? t("attached") + " " + file.name + " (" + Math.max(1, Math.round(file.size / 1024)) + " KB)" : "";
+  $("drop").classList.toggle("has-file", !!file);  // a clear, big "your file is attached" sign
 }
 $("file-input").addEventListener("change", (e) => chooseFile(e.target.files[0]));
 const drop = $("drop");
@@ -190,7 +193,7 @@ function render(data) {
   const urdu = isUrdu();
 
   const urgent = $("urgent");
-  urgent.textContent = data.urgent_warning || "";
+  urgent.textContent = data.urgent_warning ? t("urgent") : "";
   urgent.classList.toggle("hidden", !data.urgent_warning);
 
   state.voiceText = ex.voice || ex.summary;
@@ -225,7 +228,7 @@ function render(data) {
       const rg = r.range_used;
       const range = rg.qualitative ? rg.qualitative : `${rg.low} to ${rg.high} ${rg.unit}`;
       const line = el("p", "range");
-      line.appendChild(el("span", "range-label", "Normal for you"));
+      line.appendChild(el("span", "range-label", t(r.user_range ? "typed" : "normalFor")));
       line.appendChild(el("span", "range-value", range));
       card.appendChild(line);
     }
@@ -234,17 +237,80 @@ function render(data) {
     state.testNodes[r.test] = text;
     card.appendChild(text);
 
+    if (r.status === "cannot_classify" && r.next_step) card.appendChild(nextStep(r));
+
     if (r.reason || r.conversion) {
       const details = el("details");
-      details.appendChild(el("summary", "", "How we decided"));
-      if (r.conversion) details.appendChild(el("p", "", "Unit conversion: " + r.conversion));
-      if (r.reason) details.appendChild(el("p", "", r.reason));
+      details.appendChild(markUrdu(el("summary", "", t("how"))));
+      if (r.conversion) details.appendChild(el("p", "", t("conv") + " " + r.conversion));
+      if (r.reason && !state.lang.match(/^(ur|roman_urdu)$/)) details.appendChild(el("p", "", r.reason));  // the reasons are written in English
       card.appendChild(details);
     }
     cards.appendChild(card);
   });
   updateTexts(ex);
-  $("disclaimer").textContent = data.disclaimer;
+  $("disclaimer").textContent = state.lang === "en" ? data.disclaimer : t("disclaimer");
+  $("disclaimer").classList.toggle("rtl", isUrdu());
+}
+
+// A result we cannot judge: say what the patient can do, and (when the report prints its own range) let them type it.
+// Nothing is guessed: the answer is labelled as coming from the patient.
+// The same standard next-step texts in the three languages (the server sends a code, English text is the fallback).
+const NEXT_TEXT = {
+  ur: {
+    no_range: "اپنی رپورٹ میں اس نتیجے کے ساتھ \"ریفرنس رینج\" یا \"نارمل رینج\" کا کالم دیکھیں۔ اگر رینج لکھی ہو تو نیچے لکھ دیں، میں آپ کی ویلیو کا اسی سے موازنہ کر دوں گا، اور صاف بتاؤں گا کہ یہ رینج آپ نے دی ہے، لیب کی فائلوں سے نہیں۔ اگر کچھ لکھا نہ ہو تو لیب سے پوچھیں کہ وہ کون سی رینج استعمال کرتی ہے۔",
+    no_unit: "اس ویلیو کے ساتھ اکائی (یونٹ) نہیں لکھی، اس لیے موازنہ کرنا اندازہ ہوگا۔ دیکھیں آپ کی رپورٹ میں کون سی اکائی لکھی ہے (مثلاً g/dL یا mg/dL)، اور اگر نہ ہو تو لیب سے پوچھیں۔",
+    unit_convert: "میں اس اکائی کو محفوظ طریقے سے تبدیل کرنا نہیں جانتا۔ دیکھیں کہ رپورٹ یہی نتیجہ کسی اور اکائی میں بھی دیتی ہے یا نہیں، اور یقین نہ ہو تو لیب سے پوچھیں۔",
+    not_exact: "'<5' جیسا نتیجہ یا لفظ میں نتیجہ ڈاکٹر کو پڑھنا چاہیے۔ ڈاکٹر سے پوچھیں کہ آپ کے لیے اس کا کیا مطلب ہے۔",
+    ask_lab: "براہ کرم اپنے ڈاکٹر یا لیب سے پوچھیں کہ اس نتیجے کو کیسے سمجھیں۔ میرے پاس موجود فائلوں سے میں اسے جانچ نہیں سکتا۔",
+    missing: "لیب یا اپنے ڈاکٹر سے یہ نتیجہ واضح شکل میں مانگیں۔ میں اس کی ویلیو یا رینج کا اندازہ نہیں لگاؤں گا۔",
+  },
+  roman_urdu: {
+    no_range: "Apni report mein is result ke saath \"reference range\" ya \"normal range\" ka column dekhein. Agar range likhi ho to neeche likh dein, main aap ki value ka usi se muqabla kar doonga, aur saaf bataunga ke yeh range aap ne di hai, lab ki files se nahin. Agar kuch likha na ho to lab se poochein ke woh kaun si range istemal karti hai.",
+    no_unit: "Is value ke saath unit nahin likha, isliye muqabla karna andaza hoga. Dekhein aap ki report mein kaun sa unit likha hai (masalan g/dL ya mg/dL), aur agar na ho to lab se poochein.",
+    unit_convert: "Main is unit ko mehfooz tareeqe se badalna nahin jaanta. Dekhein ke report yehi result kisi aur unit mein bhi deti hai ya nahin, aur yaqeen na ho to lab se poochein.",
+    not_exact: "'<5' jaisa result ya lafz mein result doctor ko parhna chahiye. Doctor se poochein ke aap ke liye iska kya matlab hai.",
+    ask_lab: "Meharbani karke apne doctor ya lab se poochein ke is result ko kaise samjhein. Mere paas maujood files se main ise jaanch nahin sakta.",
+    missing: "Lab ya apne doctor se yeh result saaf shakal mein maangein. Main iski value ya range ka andaza nahin lagaunga.",
+  },
+};
+const RANGE_UI = {
+  en: { low: "Lowest", high: "Highest", go: "Check with this range", to: "to", wait: "Checking..." },
+  ur: { low: "کم سے کم", high: "زیادہ سے زیادہ", go: "اس رینج سے جانچیں", to: "سے", wait: "جانچ رہا ہوں..." },
+  roman_urdu: { low: "Kam se kam", high: "Zyada se zyada", go: "Is range se jaanchein", to: "se", wait: "Jaanch raha hoon..." },
+};
+
+function nextStep(r) {
+  const box = el("div", "nextstep");
+  const lang = state.lang || "en";
+  const ui = RANGE_UI[lang] || RANGE_UI.en;
+  const text = ((NEXT_TEXT[lang] || {})[r.next_code]) || r.next_step;
+  box.appendChild(markUrdu(el("p", "", text)));
+  if (!r.can_provide_range) return box;
+  const form = el("form", "rangeform");
+  const low = el("input"); low.type = "number"; low.step = "any"; low.min = "0"; low.required = true; low.placeholder = ui.low;
+  const high = el("input"); high.type = "number"; high.step = "any"; high.min = "0"; high.required = true; high.placeholder = ui.high;
+  low.setAttribute("aria-label", "Lowest normal value printed on your report");
+  high.setAttribute("aria-label", "Highest normal value printed on your report");
+  const go = el("button", "primary", ui.go); go.type = "submit";
+  form.append(low, el("span", "", ui.to), high, el("span", "unit", r.unit_as_written || ""), go);
+  const note = el("p", "rangenote", "");
+  note.setAttribute("role", "status");
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    go.disabled = true; note.textContent = ui.wait;
+    try {
+      const response = await api("/api/user-range", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: state.sessionId, test: r.test, low: Number(low.value), high: Number(high.value), language: state.lang }) });
+      const data = await response.json();
+      render(data);
+      explainInBackground(state.run, state.lang);
+    } catch (err) {
+      note.textContent = err.message; go.disabled = false;
+    }
+  });
+  box.append(form, note);
+  return box;
 }
 
 function updateTexts(ex) {
@@ -306,7 +372,7 @@ function setMode(mode) {
   const button = $("play");
   button.classList.toggle("busy", mode === "busy");
   button.classList.toggle("on", mode === "on");
-  $("play-label").textContent = mode === "on" ? "Stop" : mode === "busy" ? "Preparing" : "Listen";
+  $("play-label").textContent = t(mode === "on" ? "stop" : mode === "busy" ? "preparing" : "listen");
 }
 
 function audioUrl(text) { return `/api/tts-stream?language=${encodeURIComponent(state.lang)}&text=${encodeURIComponent(text)}`; }
