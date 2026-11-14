@@ -13,6 +13,7 @@ from decimal import Decimal
 from typing import Callable, Dict, List, Optional, Set
 
 from app import llm, observability
+from app.plain_ur import plain_ur, questions_ur, summary_ur, voice_ur
 
 log = logging.getLogger(__name__)
 _CACHE: "OrderedDict[str, Dict]" = OrderedDict()  # checked AI explanations, keyed by facts and language
@@ -26,10 +27,9 @@ SYSTEM = (
     "never say the person has a disease or condition; say what a test measures and what a low or high value CAN mean in "
     "general; remind that only a licensed doctor can diagnose; if a value is urgent, say clearly to see a doctor today; "
     "if something could not be classified or a range could not be chosen, say so and do not guess. "
-    "Return ONLY a JSON object: {\"summary\": string, \"voice\": string, \"tests\": {\"<test name>\": string}, "
+    "Return ONLY a JSON object: {\"summary\": string, \"tests\": {\"<test name>\": string}, "
     "\"questions\": [string]} with 3 to 5 questions for the doctor, based on the results that are not normal. "
-    "\"voice\" is a spoken version of the summary for an older person: at most 45 words, very short sentences, "
-    "no tables, say the urgent warning first if there is one."
+    "Keep every sentence short and simple. Each test explanation is at most 2 sentences."
 )
 
 # phrases that sound like a diagnosis
@@ -148,18 +148,33 @@ def rules_voice(analysis: Dict) -> str:
     return " ".join(parts)
 
 
-def explain(analysis: Dict, language: str = "en", use_ai: bool = True,
-            asker: Callable = llm.ask) -> Dict:
-    """Return the analysis with an 'explanation' block. Never raises: falls back to the rules text."""
-    fallback = {
+def rules_explanation(analysis: Dict, language: str = "en") -> Dict:
+    """The explanation written by code only. Instant, always correct, and available in Urdu too."""
+    if language == "ur":
+        results = analysis["results"]
+        urgent, needs = analysis["summary"]["urgent"], analysis["summary"]["needs"]
+        tests = {}
+        for f in results:
+            measures, meaning = plain_ur(f["test"], f["status"])
+            tests[f["test"]] = " ".join(x for x in (measures, meaning) if x)
+        return {"summary": summary_ur(results, urgent), "voice": voice_ur(results, urgent, needs), "tests": tests,
+                "questions": questions_ur(results), "source": "rules", "language": "ur"}
+    return {
         "summary": rules_summary(analysis),
         "voice": rules_voice(analysis),
-        "tests": {f["test"]: " ".join(x for x in (f["what_it_measures"], f["what_it_can_mean"], f["reason"]) if x)
+        "tests": {f["test"]: " ".join(x for x in (f["what_it_measures"], f["what_it_can_mean"]) if x)
                   for f in analysis["results"]},
         "questions": analysis["questions_for_doctor"],
         "source": "rules",
         "language": "en",
     }
+
+
+def explain(analysis: Dict, language: str = "en", use_ai: bool = True,
+            asker: Optional[Callable] = None) -> Dict:
+    """Return the analysis with an 'explanation' block. Never raises: falls back to the rules text.
+    The spoken summary is always the rules text: it is known at once, so the voice can be prepared early."""
+    fallback = rules_explanation(analysis, language)
     out = dict(analysis)
     if not use_ai:
         out["explanation"] = fallback
@@ -178,7 +193,9 @@ def explain(analysis: Dict, language: str = "en", use_ai: bool = True,
         data, problem = None, None
         for attempt in range(2):  # one more try, telling the model what was wrong
             extra = f"\n\nYour previous answer was rejected because: {problem}. Fix that and answer again." if problem else ""
-            data = llm.ask_json(SYSTEM, prompt + extra, _valid_shape, asker=asker)
+            # first try: the quick model (about 0.7 s). If the checker rejects it, the stronger model gets one go.
+            chosen = asker or (lambda s, u: llm.ask(s, u, fast=(attempt == 0)))
+            data = llm.ask_json(SYSTEM, prompt + extra, _valid_shape, asker=chosen)
             problem = check_text(data, analysis)
             if not problem:
                 break
@@ -187,8 +204,7 @@ def explain(analysis: Dict, language: str = "en", use_ai: bool = True,
             out["explanation"] = fallback
             return out
         data["source"], data["language"] = "ai", language
-        if not isinstance(data.get("voice"), str) or not data["voice"].strip():
-            data["voice"] = fallback["voice"]
+        data["voice"] = fallback["voice"]
         # make sure every test has a sentence, even if the model skipped one
         for f in analysis["results"]:
             data["tests"].setdefault(f["test"], fallback["tests"].get(f["test"], ""))

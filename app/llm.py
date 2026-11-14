@@ -93,11 +93,14 @@ def _openai_compatible(prefix: str, system: str, user: str, cfg: dict, fast: boo
         return None
     base = os.getenv(f"{prefix}_BASE_URL", "https://api.groq.com/openai/v1").rstrip("/")
     for model in _models(prefix, fast, "openai/gpt-oss-120b,openai/gpt-oss-20b", "openai/gpt-oss-20b,openai/gpt-oss-120b"):
+        body = {"model": model, "temperature": 0.2,
+                "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]}
+        if "gpt-oss" in model:  # these models "think" before answering; low effort is about 40 percent faster here
+            body["reasoning_effort"] = os.getenv("REASONING_EFFORT", "low")
         data = _post(
             f"{base}/chat/completions",
             {"Authorization": f"Bearer {key}"},
-            {"model": model, "temperature": 0.2,
-             "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]},
+            body,
             cfg["timeout"], cfg["retries"], cfg["deadline"], f"{prefix.lower()}:{model}",
         )
         if data:
