@@ -197,3 +197,39 @@ def test_alias_question_is_answered_from_the_glossary():
     sid = analyse(HEAD + "Hemoglobin: 15 g/dL")["session_id"]
     a = chat(sid, "What does SGPT mean?")
     assert "ALT" in a["answer"] and a["source"] == "rules"
+
+
+# ---------- more cases from the second round of testing ----------
+@pytest.mark.parametrize("line", [
+    "Hemoglobin (Hb): 6.5 g/dL", "Platelet Count (PLT): 45000 cells/mcL", "ALT (SGPT): 1200 U/L",
+    "Fasting Blood Sugar (FBS): 350 mg/dL",
+    "Hemoglobin: 6.5 g/dL (L)", "Hemoglobin: 6.5 g/dL [13.8-17.2]", "Hemoglobin: 6.5 g/dL CRITICAL",
+    "Hemoglobin: 6.5 g/dL 13.8 - 17.2 L", "| Hemoglobin | 6.5 | g/dL | 13.8-17.2 | CRITICAL |",
+    "Platelets: <10 cells/mcL", "ALT: >1000 U/L",
+])
+def test_danger_is_found_whatever_the_line_looks_like(line):
+    d = analyse(HEAD + line)
+    assert d["results"][0]["status"] == "urgent" and d["urgent_warning"], line
+
+
+def test_flags_in_the_report_are_never_trusted():
+    d = analyse(HEAD + "Hemoglobin: 15 g/dL (H)\nALT: 30 U/L CRITICAL")
+    assert [f["status"] for f in d["results"]] == ["normal", "normal"]
+
+
+def test_wrong_direction_comparator_is_not_called_urgent():
+    d = analyse(HEAD + "Hemoglobin: >5 g/dL")  # could be anything above 5
+    assert d["results"][0]["status"] == "cannot_classify"
+
+
+@pytest.mark.parametrize("age", ["18 months", "3 weeks", "10 days", "2 years"])
+def test_a_baby_is_never_given_the_adult_range(age):
+    d = analyse(f"* **Recorded Age**: {age}\n* **Biological Sex**: Male\nHemoglobin: 15 g/dL")
+    assert d["results"][0]["status"] == "cannot_classify"
+
+
+def test_ocr_text_without_spaces_is_split():
+    from app.readfile import _respace
+    assert _respace("Hemoglobin15g/dL") == "Hemoglobin 15 g/dL"
+    assert _respace("Platelets<10cells/mcL") == "Platelets <10 cells/mcL"
+    assert _respace("Vitamin B12 350 pg/mL") == "Vitamin B12 350 pg/mL"

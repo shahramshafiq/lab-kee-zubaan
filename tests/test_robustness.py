@@ -144,8 +144,9 @@ def test_unicode_and_odd_characters_do_not_crash():
 
 
 def test_comparator_values_are_not_treated_as_exact():
-    f = one(header() + "Hemoglobin: <5 g/dL")
-    assert f["status"] == "cannot_classify"
+    assert one(header() + "Hemoglobin: <5 g/dL")["status"] == "urgent"  # anything below 5 is below the danger limit of 7
+    assert one(header() + "Hemoglobin: <15 g/dL")["status"] == "cannot_classify"  # could be 14 (normal) or 6 (urgent)
+    assert one(header() + "Hemoglobin: >5 g/dL")["status"] == "cannot_classify"
 
 
 # ---------- attacks ----------
