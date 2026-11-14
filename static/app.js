@@ -305,10 +305,53 @@ function prime(text) {
   player.load();
 }
 
+// Speaking an answer while it is still being written: each finished sentence is turned into speech at once, all the
+// requests run in parallel, and the audio is played in order as soon as the earlier sentence has finished.
+const queue = { token: 0, chain: Promise.resolve(), pending: 0 };
+
 function stopSpeaking() {
+  queue.token += 1;           // anything still queued from before is dropped
+  queue.chain = Promise.resolve();
+  queue.pending = 0;
   player.pause();
   window.speechSynthesis && window.speechSynthesis.cancel();
   setMode("idle");
+}
+
+function fetchAudio(text) {
+  return fetch(audioUrl(clip(text)))
+    .then((r) => { if (!r.ok) throw new Error("voice"); return r.blob(); })
+    .then((b) => URL.createObjectURL(b));
+}
+
+function playBlob(url, token) {
+  return new Promise((resolve) => {
+    if (token !== queue.token) { resolve(); return; }
+    player.onplaying = () => setMode("on");
+    player.onended = resolve;
+    player.onerror = resolve;
+    player.src = url;
+    player.play().catch(resolve);
+  });
+}
+
+function speakChunk(text, token) {
+  if (!text || token !== queue.token) return;
+  const voice = window.speechSynthesis ? deviceVoice(state.lang) : null;
+  if (voice) {  // the device voice starts at once and the browser queues the sentences itself
+    const utter = new SpeechSynthesisUtterance(clip(text));
+    utter.voice = voice; utter.lang = voice.lang; utter.rate = 0.95;
+    utter.onstart = () => setMode("on");
+    utter.onend = () => { if (!window.speechSynthesis.speaking && !window.speechSynthesis.pending) setMode("idle"); };
+    utter.onerror = utter.onend;
+    window.speechSynthesis.speak(utter);
+    return;
+  }
+  const audio = fetchAudio(text);  // starts now, in parallel with the other sentences
+  queue.pending += 1;
+  setMode("busy");
+  queue.chain = queue.chain.then(() => audio.then((url) => playBlob(url, token), () => {}))
+    .then(() => { if (token === queue.token) { queue.pending -= 1; if (queue.pending <= 0) setMode("idle"); } });
 }
 
 function speakOnDevice(text, voice) {
@@ -385,6 +428,57 @@ function addMessage(who, text, refused) {
   markUrdu(bubble);
   $("log").appendChild(bubble);
   $("log").scrollTop = $("log").scrollHeight;
+  return bubble;
+}
+
+// A question asked by voice: the answer appears and is spoken sentence by sentence while it is being written.
+async function askStream(message) {
+  if (!message.trim() || !state.sessionId) return;
+  addMessage("me", message);
+  stopSpeaking();
+  const token = queue.token;
+  const bubble = addMessage("bot", "...");
+  let started = false;
+  $("send").disabled = true;
+  function handle(ev) {
+    if (ev.type === "sentence") {
+      bubble.textContent = started ? bubble.textContent + " " + ev.text : ev.text;
+      started = true;
+      speakChunk(ev.spoken, token);
+    } else if (ev.type === "final") {  // a fixed safe answer, or a safe answer replacing a sentence that failed the check
+      bubble.textContent = ev.answer;
+      bubble.classList.toggle("refused", !!ev.refused);
+      if (started) { stopSpeaking(); }
+      speakChunk(ev.spoken || ev.answer, queue.token);
+      if (ev.analysis) { render(ev.analysis); explainInBackground(state.run, state.lang); }
+    }
+    $("log").scrollTop = $("log").scrollHeight;
+  }
+  try {
+    const response = await api("/api/chat-stream", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session_id: state.sessionId, message, language: state.lang, voice: true }),
+    });
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let cut;
+      while ((cut = buffer.indexOf("\n")) >= 0) {
+        const line = buffer.slice(0, cut).trim();
+        buffer = buffer.slice(cut + 1);
+        if (line) handle(JSON.parse(line));
+      }
+    }
+    if (!started && bubble.textContent === "...") bubble.textContent = "I could not answer that just now. Please try again.";
+  } catch (err) {
+    bubble.textContent = started ? bubble.textContent : err.message;
+  } finally {
+    $("send").disabled = false;
+  }
 }
 
 async function sendChat(message, byVoice) {
@@ -444,12 +538,13 @@ async function toggleRecording() {
       const text = (await (await api("/api/stt", { method: "POST", body: form })).json()).text;
       note.textContent = "Press the microphone, ask your question, press it again.";
       if (!text) { note.textContent = "I did not hear anything. Please try again."; return; }
-      await sendChat(text, true);
+      await askStream(text);
     } catch (err) {
       note.textContent = err.message;
     }
   };
   recorder.start();
+  fetch("/api/warmup").catch(() => {});  // while the person speaks, the server opens its AI and voice connections
   $("mic").classList.add("rec");
   note.textContent = "Listening... press the microphone again when you are done.";
 }
