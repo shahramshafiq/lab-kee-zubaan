@@ -21,7 +21,18 @@ The app is a long-running Python server with in-memory sessions and calls that c
 
 Current free-tier rules change often. Check them before relying on one. If the evaluation might call the live link automatically, a sleeping service can time out, so keep it awake (a free uptime pinger on `/api/health` every few minutes) and test it first.
 
-## Steps (any Docker host)
+## Fastest path: Render blueprint (about 5 minutes)
+`render.yaml` in the repo describes the service, so there is nothing to configure by hand.
+1. Sign in at render.com with the GitHub account that owns the repo, and allow it to read the repo.
+2. New + > Blueprint > choose `lab-kee-zubaan` > Apply.
+3. When it asks for `GROQ_API_KEY` and `GEMINI_API_KEY`, paste your own keys (they stay in Render, not in git).
+4. Wait for the first build (a few minutes). Open the `onrender.com` link it shows.
+5. Check it: `python scripts/smoke_test.py --base https://YOUR-NAME.onrender.com --ai --voice`
+6. Optional: a free uptime pinger on `https://YOUR-NAME.onrender.com/api/health` every 5 minutes keeps the free service awake.
+
+The container was tested with a custom `PORT` (Render sets one) and reports healthy.
+
+## Steps (any other Docker host)
 1. Create a service from the GitHub repo (it detects the `Dockerfile`).
 2. Set the environment variables in the host's dashboard, never in the repo: `GROQ_API_KEY`, `GEMINI_API_KEY`, `PROVIDER_ORDER=groq,gemini`. Optional: `LLM_MAX_CALLS_PER_HOUR` (default 1500), `RATE_ANALYZE_PER_MIN`, `RATE_CHAT_PER_MIN`.
 3. Health check path: `/api/health`. The container listens on `$PORT` (default 8000).
