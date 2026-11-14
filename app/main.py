@@ -83,11 +83,11 @@ def health():
 
 @app.get("/api/demo-reports")
 def demo_reports():
-    """The lab's own sample reports, for trying the tool. Names are not listed."""
+    """The lab's own sample reports, for trying the tool. Patient names are not listed."""
     out = []
     for path in sorted(Path(config.DATA_DIR).glob("report_*.md")):
-        parts = path.stem.split("_")
-        out.append({"id": parts[1], "hint": " ".join(parts[3:]) or "report"})
+        report_id = path.stem.split("_")[1]
+        out.append({"id": report_id, "label": f"Sample report {report_id}"})
     return out
 
 

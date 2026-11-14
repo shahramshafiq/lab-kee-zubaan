@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lab Kee Zubaan</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <span class="logo" aria-hidden="true">LZ</span>
+      <div>
+        <h1>Lab Kee Zubaan</h1>
+        <p>Your lab report, explained in simple words you can listen to.</p>
+      </div>
+    </div>
+    <label class="lang">Language
+      <select id="language">
+        <option value="en">English</option>
+        <option value="ur">اردو</option>
+        <option value="roman_urdu">Roman Urdu</option>
+      </select>
+    </label>
+  </header>
+
+  <main class="layout">
+    <section class="card" aria-labelledby="h-report">
+      <h2 id="h-report">1. Your report</h2>
+      <div class="tabs" role="tablist">
+        <button class="tab active" data-tab="sample" role="tab">Try a sample</button>
+        <button class="tab" data-tab="upload" role="tab">Upload file</button>
+        <button class="tab" data-tab="paste" role="tab">Paste text</button>
+      </div>
+      <div class="pane" id="pane-sample">
+        <label for="sample-select">Pick one of the lab's example reports</label>
+        <select id="sample-select"></select>
+      </div>
+      <div class="pane hidden" id="pane-upload">
+        <label for="file-input">A text or markdown report (.txt or .md)</label>
+        <input type="file" id="file-input" accept=".txt,.md,text/plain,text/markdown">
+      </div>
+      <div class="pane hidden" id="pane-paste">
+        <label for="paste-text">Paste the report text</label>
+        <textarea id="paste-text" rows="7" placeholder="Patient age, sex and test results..."></textarea>
+      </div>
+      <button id="go" class="primary">Explain my report</button>
+      <p id="status" class="status" role="status" aria-live="polite"></p>
+      <p class="privacy">Your name and record number are removed before anything is sent to the AI. Nothing is saved after you close this page.</p>
+    </section>
+
+    <section id="results" class="hidden" aria-labelledby="h-results">
+      <h2 id="h-results" class="sr">Your results</h2>
+      <div id="urgent" class="banner-urgent hidden" role="alert"></div>
+
+      <div class="card listen">
+        <div>
+          <h2>Listen</h2>
+          <p id="voice-text" class="voice-text"></p>
+        </div>
+        <button id="play" class="primary round" aria-label="Listen to the summary">&#9658; Listen</button>
+      </div>
+
+      <div id="needs" class="card needs hidden">
+        <h2>I need a little more information</h2>
+        <p>Normal ranges depend on age and sex, and I will not guess them. Please tell me:</p>
+        <div class="row">
+          <label>Age <input type="number" id="need-age" min="0" max="120" inputmode="numeric"></label>
+          <label>Sex
+            <select id="need-sex"><option value="">Choose</option><option value="female">Female</option><option value="male">Male</option></select>
+          </label>
+          <button id="need-go">Update results</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Summary</h2>
+        <p id="summary"></p>
+      </div>
+
+      <div id="cards" class="cards"></div>
+
+      <div class="card">
+        <h2>Questions to ask your doctor</h2>
+        <ol id="questions"></ol>
+      </div>
+
+      <p id="disclaimer" class="disclaimer"></p>
+
+      <div class="card chat" aria-labelledby="h-chat">
+        <h2 id="h-chat">Ask about this report</h2>
+        <div id="log" class="log" aria-live="polite"></div>
+        <div class="row">
+          <input type="text" id="chat-input" placeholder="Type a question, or press the microphone" maxlength="2000">
+          <button id="mic" class="round" aria-label="Speak your question">&#127908;</button>
+          <button id="send" class="primary">Send</button>
+        </div>
+        <label class="check"><input type="checkbox" id="speak-answers" checked> Speak the answers</label>
+        <p id="mic-note" class="status"></p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">Tech Fusion '26 AI Hackathon, Challenge B. This tool explains numbers. It cannot diagnose. Only a licensed doctor can.</footer>
+  <audio id="player" hidden></audio>
+  <script src="/static/app.js"></script>
+</body>
+</html>
