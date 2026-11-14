@@ -109,8 +109,15 @@ button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-
 .chip.normal { background: var(--ok-bg); color: var(--ok); }
 .chip.low, .chip.high { background: var(--warn-bg); color: var(--warn); }
 .chip.urgent { background: var(--bad-bg); color: var(--bad); }
-.value { margin: .35rem 0 0; font-weight: 700; }
-.value small { font-weight: 400; color: var(--muted); font-size: var(--small); }
+.result .value { margin: .55rem 0 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 .4rem; font-weight: 700; }
+.value .num { font-size: 1.75rem; line-height: 1.25; }
+.value .unit { font-size: 1rem; font-weight: 600; color: var(--muted); }
+.result.normal .num { color: var(--ok); }
+.result.low .num, .result.high .num { color: var(--warn); }
+.result.urgent .num { color: var(--bad); }
+.result .range { margin: .05rem 0 0; font-size: var(--small); color: var(--muted); }
+.range-label { font-weight: 700; color: var(--ink); margin-right: .45rem; }
+.range-value { display: inline-block; }  /* the range moves to the next line as one piece, never split in the middle */
 .result p { margin: .45rem 0 0; }
 details { margin-top: .1rem; color: var(--muted); font-size: var(--small); }
 summary { cursor: pointer; padding: .65rem 0; }

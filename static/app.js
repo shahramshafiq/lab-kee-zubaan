@@ -213,14 +213,19 @@ function render(data) {
     head.appendChild(markUrdu(el("span", "chip " + r.status, (STATUS[urdu ? "ur" : "en"])[r.status] || r.status)));
     card.appendChild(head);
 
-    const shown = r.value_as_written + (r.unit_as_written ? " " + r.unit_as_written : "");
-    const value = el("p", "value", shown);
+    // the number first and big, the unit beside it, then the normal range on its own line
+    const value = el("p", "value");
+    value.appendChild(el("span", "num", r.value_as_written));
+    if (r.unit_as_written) value.appendChild(el("span", "unit", r.unit_as_written));
+    card.appendChild(value);
     if (r.range_used) {
       const rg = r.range_used;
       const range = rg.qualitative ? rg.qualitative : `${rg.low} to ${rg.high} ${rg.unit}`;
-      value.appendChild(el("small", "", "   normal for you: " + range));
+      const line = el("p", "range");
+      line.appendChild(el("span", "range-label", "Normal for you"));
+      line.appendChild(el("span", "range-value", range));
+      card.appendChild(line);
     }
-    card.appendChild(value);
 
     const text = el("p", "plain");
     state.testNodes[r.test] = text;
