@@ -119,6 +119,24 @@ def analyze_report(req: AnalyzeRequest, background: BackgroundTasks):
     return _run(patient, req.language, req.use_ai, background)
 
 
+class ExplainRequest(BaseModel):
+    session_id: str
+    language: str = "en"
+
+
+@app.post("/api/explain")
+def explain_session(req: ExplainRequest):
+    """The AI-written words for a report that was already analysed. The page shows the instant rules text first
+    (analyze with use_ai=false) and swaps these in when they arrive."""
+    session = SESSIONS.get(req.session_id)
+    if not session:
+        raise HTTPException(404, "This conversation has expired. Please upload the report again.")
+    updated = explain(session["analysis"], language=req.language, use_ai=True)
+    updated["session_id"] = req.session_id
+    session["analysis"] = updated
+    return {"explanation": updated["explanation"]}
+
+
 @app.post("/api/analyze-file")
 async def analyze_file(background: BackgroundTasks, file: UploadFile = File(...), language: str = "en",
                        use_ai: bool = True):

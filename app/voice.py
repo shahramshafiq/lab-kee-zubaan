@@ -128,7 +128,7 @@ async def synthesize(text: str, language: str) -> bytes:
 
 def prewarm(text: str, language: str) -> None:
     """Prepare the audio in the background (blocking call, run it from a background task or thread)."""
-    if os.getenv("TTS_PREWARM", "true").lower() not in ("1", "true", "yes"):
+    if os.getenv("TTS_PREWARM", "false").lower() not in ("1", "true", "yes"):  # the page primes its own audio
         return
     try:
         asyncio.run(synthesize(text, language))
