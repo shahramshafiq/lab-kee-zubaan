@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 from typing import Callable, Dict, Optional, Set, Tuple
 
-from app import llm
+from app import guard, llm, observability
 from app.explain import LANGUAGES, _facts, check_answer, deidentify
 from app.extract import parse_report
 
@@ -80,7 +80,12 @@ def answer(question: str, analysis: Dict, all_names: Set[str], language: str = "
            asker: Optional[Callable] = None, voice: bool = False) -> Dict:
     """Return {'answer', 'refused', 'source'}. Never raises. voice=True keeps the answer very short."""
     if asks_about_someone_else(question, analysis["patient"], all_names):
-        return {"answer": REFUSAL, "refused": True, "source": "rules"}
+        observability.count("refused_other_patient")
+        return {"answer": REFUSAL, "refused": True, "source": "rules", "reason": "other_patient"}
+    kind = guard.classify_question(question)
+    if kind:  # diagnosis, treatment or an attack on the instructions: fixed safe answer, the AI never sees it
+        observability.count("refused_" + kind)
+        return {"answer": guard.MESSAGES[kind], "refused": True, "source": "rules", "reason": kind}
     try:
         prompt = (f"Answer in {LANGUAGES.get(language, LANGUAGES['en'])}.\n"
                   f"Patient: {json.dumps(deidentify(analysis)['patient'])}\n"
