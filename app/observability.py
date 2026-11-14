@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 log = logging.getLogger("app.http")
 
 METRICS: Dict[str, int] = defaultdict(int)
+MAX_BODY = 6_000_000  # largest request we accept (a 5 MB upload plus form overhead)
 
 # requests allowed per client per minute, by path prefix (first match wins)
 LIMITS = [("/api/tts", 20), ("/api/stt", 20), ("/api/chat", 40), ("/api/analyze", 30)]
@@ -43,6 +44,10 @@ async def middleware(request: Request, call_next):
     request_id = uuid.uuid4().hex[:8]
     started = time.monotonic()
     client = request.client.host if request.client else "unknown"
+    declared = request.headers.get("content-length", "")
+    if declared.isdigit() and int(declared) > MAX_BODY:
+        count("too_large")
+        return JSONResponse({"detail": "That request is too large."}, status_code=413)
     prefix, limit = _limit_for(request.url.path)
     if prefix and not _allowed(client, prefix, limit):
         count("rate_limited")
@@ -60,6 +65,10 @@ async def middleware(request: Request, call_next):
     if response.status_code >= 500:
         count("errors")
     response.headers["X-Request-ID"] = request_id
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["Permissions-Policy"] = "microphone=(self), camera=(), geolocation=()"
     if request.url.path.startswith("/api/"):
         log.info("[%s] %s %s -> %d in %d ms", request_id, request.method, request.url.path, response.status_code, ms)
     return response
