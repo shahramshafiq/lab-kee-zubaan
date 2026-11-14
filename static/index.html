@@ -3,105 +3,118 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Lab Kee Zubaan</title>
+  <meta name="description" content="Understand your lab report in simple words, and listen to it in English or Urdu.">
+  <meta name="theme-color" content="#0042ac">
+  <title>Lab Kee Zubaan | Your lab report in simple words</title>
+  <link rel="preload" href="/static/fonts/noto-nastaliq-urdu-arabic-400.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
+  <a class="skip" href="#main">Skip to the report</a>
+
   <header class="top">
     <div class="brand">
-      <span class="logo" aria-hidden="true">LZ</span>
+      <span class="logo" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
       <div>
         <h1>Lab Kee Zubaan</h1>
-        <p>Your lab report, explained in simple words you can listen to.</p>
+        <p class="ur-text" lang="ur">لیب کی زبان</p>
       </div>
     </div>
-    <label class="lang">Language
-      <select id="language">
-        <option value="en">English</option>
-        <option value="ur">اردو</option>
-        <option value="roman_urdu">Roman Urdu</option>
-      </select>
-    </label>
+    <div class="seg" role="group" aria-label="Language">
+      <button class="seg-btn on" data-lang="en" aria-pressed="true">English</button>
+      <button class="seg-btn" data-lang="ur" aria-pressed="false" lang="ur">اردو</button>
+      <button class="seg-btn" data-lang="roman_urdu" aria-pressed="false">Roman Urdu</button>
+    </div>
   </header>
 
-  <main class="layout">
-    <section class="card" aria-labelledby="h-report">
-      <h2 id="h-report">1. Your report</h2>
-      <div class="tabs" role="tablist">
-        <button class="tab active" data-tab="sample" role="tab">Try a sample</button>
-        <button class="tab" data-tab="upload" role="tab">Upload file</button>
-        <button class="tab" data-tab="paste" role="tab">Paste text</button>
+  <main id="main" tabindex="-1">
+    <section id="start" class="hero" aria-labelledby="h-start">
+      <h2 id="h-start">Understand your lab report</h2>
+      <p class="lead">Add your report. You will get it in simple words, and you can listen to it.</p>
+
+      <label class="drop" id="drop" for="file-input">
+        <span class="drop-icon" aria-hidden="true">+</span>
+        <strong>Drop your report here</strong>
+        <span>or click to choose a file (PDF, .txt or .md)</span>
+        <span id="file-name" class="file-name"></span>
+      </label>
+      <input type="file" id="file-input" accept=".pdf,.txt,.md,application/pdf,text/plain,text/markdown" hidden>
+
+      <p class="alt">
+        <button class="link" id="show-paste">Paste the text instead</button>
+        <span aria-hidden="true">&middot;</span>
+        <button class="link" id="show-sample">Try an example</button>
+      </p>
+      <div id="paste-box" class="box hidden">
+        <label for="paste-text">Paste the text of your report</label>
+        <textarea id="paste-text" rows="6" placeholder="Age, sex and the test results..."></textarea>
       </div>
-      <div class="pane" id="pane-sample">
-        <label for="sample-select">Pick one of the lab's example reports</label>
+      <div id="sample-box" class="box hidden">
+        <label for="sample-select">Pick an example report</label>
         <select id="sample-select"></select>
       </div>
-      <div class="pane hidden" id="pane-upload">
-        <label for="file-input">A text or markdown report (.txt or .md)</label>
-        <input type="file" id="file-input" accept=".txt,.md,text/plain,text/markdown">
-      </div>
-      <div class="pane hidden" id="pane-paste">
-        <label for="paste-text">Paste the report text</label>
-        <textarea id="paste-text" rows="7" placeholder="Patient age, sex and test results..."></textarea>
-      </div>
-      <button id="go" class="primary">Explain my report</button>
+
+      <button id="go" class="primary big">Explain my report</button>
       <p id="status" class="status" role="status" aria-live="polite"></p>
       <p class="privacy">Your name and record number are removed before anything is sent to the AI. Nothing is saved after you close this page.</p>
     </section>
 
     <section id="results" class="hidden" aria-labelledby="h-results">
-      <h2 id="h-results" class="sr">Your results</h2>
+      <h2 id="h-results" class="sr" tabindex="-1">Your results</h2>
+      <button class="link back" id="again">&larr; Add a different report</button>
+
       <div id="urgent" class="banner-urgent hidden" role="alert"></div>
 
-      <div class="card listen">
-        <div>
-          <h2>Listen</h2>
+      <section class="short" id="short" aria-labelledby="h-short">
+        <div class="short-text">
+          <h2 id="h-short">In short</h2>
           <p id="voice-text" class="voice-text"></p>
         </div>
-        <button id="play" class="primary round" aria-label="Listen to the summary">&#9658; Listen</button>
-      </div>
+        <button id="play" class="play" aria-label="Listen to the summary">
+          <span class="bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+          <span id="play-label">Listen</span>
+        </button>
+      </section>
 
-      <div id="needs" class="card needs hidden">
-        <h2>I need a little more information</h2>
-        <p>Normal ranges depend on age and sex, and I will not guess them. Please tell me:</p>
+      <section id="needs" class="needs hidden" aria-labelledby="h-needs">
+        <h2 id="h-needs">I need a little more information</h2>
+        <p>Normal ranges depend on age and sex, and I will not guess them.</p>
         <div class="row">
           <label>Age <input type="number" id="need-age" min="0" max="120" inputmode="numeric"></label>
           <label>Sex
             <select id="need-sex"><option value="">Choose</option><option value="female">Female</option><option value="male">Male</option></select>
           </label>
-          <button id="need-go">Update results</button>
+          <button id="need-go" class="primary">Update</button>
         </div>
-      </div>
+      </section>
 
-      <div class="card">
-        <h2>Summary</h2>
-        <p id="summary"></p>
-      </div>
-
+      <h2 class="sec">Your results</h2>
       <div id="cards" class="cards"></div>
 
-      <div class="card">
-        <h2>Questions to ask your doctor</h2>
-        <ol id="questions"></ol>
-      </div>
+      <h2 class="sec">Questions to ask your doctor</h2>
+      <ol id="questions" class="questions"></ol>
 
-      <p id="disclaimer" class="disclaimer"></p>
-
-      <div class="card chat" aria-labelledby="h-chat">
-        <h2 id="h-chat">Ask about this report</h2>
+      <section class="chat" aria-labelledby="h-chat">
+        <h2 id="h-chat">Ask about your report</h2>
         <div id="log" class="log" aria-live="polite"></div>
-        <div class="row">
-          <input type="text" id="chat-input" placeholder="Type a question, or press the microphone" maxlength="2000">
-          <button id="mic" class="round" aria-label="Speak your question">&#127908;</button>
+        <div class="ask">
+          <button id="mic" class="mic" aria-label="Speak your question"><span class="mic-icon" aria-hidden="true"></span></button>
+          <input type="text" id="chat-input" placeholder="Type your question here" maxlength="2000" aria-label="Your question">
           <button id="send" class="primary">Send</button>
         </div>
-        <label class="check"><input type="checkbox" id="speak-answers" checked> Speak the answers</label>
-        <p id="mic-note" class="status"></p>
-      </div>
+        <p id="mic-note" class="status">Press the microphone, ask your question, press it again.</p>
+      </section>
+
+      <p id="disclaimer" class="disclaimer"></p>
+      <p class="share-row">
+        <button class="link" id="share">Share on WhatsApp</button>
+        <span aria-hidden="true">&middot;</span>
+        <button class="link" id="print">Print or save</button>
+      </p>
     </section>
   </main>
 
-  <footer class="foot">Tech Fusion '26 AI Hackathon, Challenge B. This tool explains numbers. It cannot diagnose. Only a licensed doctor can.</footer>
+  <footer class="foot">This tool explains numbers. It cannot diagnose. Only a licensed doctor can.</footer>
   <audio id="player" hidden></audio>
   <script src="/static/app.js"></script>
 </body>
