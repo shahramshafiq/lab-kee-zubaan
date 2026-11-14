@@ -44,7 +44,7 @@ export function createScene(canvas, options = {}) {
   const sprite = lightSprite();
 
   // ---------- rising particles ----------
-  const COUNT = low ? 120 : 300;
+  const COUNT = low ? 60 : 150;
   const pos = new Float32Array(COUNT * 3);
   const col = new Float32Array(COUNT * 3);
   const speed = new Float32Array(COUNT);
@@ -62,8 +62,8 @@ export function createScene(canvas, options = {}) {
   const pGeo = new BufferGeometry();
   pGeo.setAttribute("position", new BufferAttribute(pos, 3));
   pGeo.setAttribute("color", new BufferAttribute(col, 3));
-  const pMat = new PointsMaterial({ size: low ? 0.34 : 0.26, map: sprite, vertexColors: true, transparent: true,
-    opacity: 0.85, depthWrite: false, blending: AdditiveBlending });
+  const pMat = new PointsMaterial({ size: low ? 0.22 : 0.17, map: sprite, vertexColors: true, transparent: true,
+    opacity: 0.6, depthWrite: false, blending: AdditiveBlending });
   const points = new Points(pGeo, pMat);
   scene.add(points);
 
@@ -72,7 +72,7 @@ export function createScene(canvas, options = {}) {
   const rings = [];
   const RING_COUNT = 4;
   for (let i = 0; i < RING_COUNT; i++) {
-    const mat = new MeshBasicMaterial({ color: i % 2 ? OCEAN.clone() : JADE.clone(), transparent: true, opacity: 0.3,
+    const mat = new MeshBasicMaterial({ color: i % 2 ? OCEAN.clone() : JADE.clone(), transparent: true, opacity: 0.2,
       side: DoubleSide, blending: AdditiveBlending, depthWrite: false });
     const ring = new Mesh(new RingGeometry(1.5, 1.55, 128), mat);
     rings.push(ring);
@@ -129,7 +129,7 @@ export function createScene(canvas, options = {}) {
   function targetFor(name) {
     const wide = canvas.clientWidth > 820;
     if (name === "intro") return { scale: 1.25, x: 0, y: 0, z: 0, alpha: 1, ringAlpha: 1 };
-    return { scale: wide ? 0.62 : 0.5, x: wide ? 7.2 : 0, y: wide ? 0 : 5, z: -3, alpha: wide ? 0.5 : 0.28, ringAlpha: 0.55 };
+    return { scale: wide ? 0.62 : 0.5, x: wide ? 7.2 : 0, y: wide ? 0 : 5, z: -3, alpha: wide ? 0.36 : 0.2, ringAlpha: 0.5 };
   }
   target = targetFor(mode);
 
@@ -165,7 +165,7 @@ export function createScene(canvas, options = {}) {
       if (arr[i * 3 + 1] > 11) arr[i * 3 + 1] = -11;
     }
     pGeo.attributes.position.needsUpdate = true;
-    pMat.opacity = 0.55 + energy * 0.4;
+    pMat.opacity = 0.4 + energy * 0.4;
 
     // sound rings breathe slowly, and ripple outwards when there is sound
     const rate = 0.16 + energy * 0.7;
@@ -173,7 +173,7 @@ export function createScene(canvas, options = {}) {
       const phase = (t * rate + i / RING_COUNT) % 1;
       const s = 0.7 + phase * (2.6 + energy * 2.2);
       ring.scale.set(s, s, 1);
-      ring.material.opacity = (1 - phase) * (0.28 + energy * 0.45) * view.ringAlpha;
+      ring.material.opacity = (1 - phase) * (0.18 + energy * 0.4) * view.ringAlpha;
       ring.material.color.copy(i % 2 ? OCEAN : JADE).lerp(WARM, warm);
     });
     ringGroup.position.set(view.x * 0.6, view.y * 0.6, view.z);
