@@ -93,7 +93,12 @@ def answer(question: str, analysis: Dict, all_names: Set[str], language: str = "
                   f"Facts: {json.dumps(_facts(analysis))}\nQuestion: {question}")
         if voice:
             prompt += "\nThis answer will be spoken aloud to an older person: at most 40 words, short sentences."
-        text = (asker or llm.ask)(CHAT_SYSTEM, prompt).strip()
+        if asker:
+            text = asker(CHAT_SYSTEM, prompt).strip()
+        elif voice:
+            text = llm.ask(CHAT_SYSTEM, prompt, fast=True).strip()  # spoken answers use the quicker model
+        else:
+            text = llm.ask(CHAT_SYSTEM, prompt).strip()
         problem = check_answer(text, analysis)
         if problem:  # same safety check as the explanation: no invented numbers, no diagnosis
             log.warning("Chat answer rejected: %s", problem)
