@@ -128,8 +128,11 @@ html[lang="ur"] .result .range { text-align: right; }
 .result p { margin: .45rem 0 0; }
 details { margin-top: .1rem; color: var(--muted); font-size: var(--small); }
 summary { cursor: pointer; padding: .65rem 0; }
-.questions { margin: 0; padding-left: 1.3rem; }
-.questions li { margin-bottom: .5rem; }
+/* the doctor questions: the numbers are round badges, so they read the same in English and Urdu (no stray full stop) */
+.questions { list-style: none; counter-reset: q; margin: 0; padding: 0; }
+.questions li { counter-increment: q; position: relative; padding-inline-start: 2.7rem; margin-bottom: .8rem; min-height: 2.2rem; }
+.questions li::before { content: counter(q); position: absolute; inset-inline-start: 0; top: .1rem; display: grid; place-items: center; width: 1.9rem; height: 1.9rem; border-radius: 50%; background: var(--sapphire); color: #fff; font: 700 var(--small)/1 system-ui, "Segoe UI", Roboto, sans-serif; }
+.questions.rtl li::before { top: .5rem; }  /* Nastaliq lines are taller, so the badge sits a little lower */
 
 .chat { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 1.1rem 1.2rem; margin: 1.6rem 0 1rem; }
 .log { display: flex; flex-direction: column; gap: .5rem; max-height: 340px; overflow-y: auto; margin-bottom: .8rem; }
