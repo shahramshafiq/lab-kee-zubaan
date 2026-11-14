@@ -3,10 +3,12 @@
 // file stays small for phones). Colours: sapphire, ocean and jade on a deep navy page.
 import {
   AdditiveBlending, BufferAttribute, BufferGeometry, CanvasTexture, Color, DoubleSide, Group, InstancedMesh,
-  LineBasicMaterial, LineSegments, Matrix4, Mesh, MeshBasicMaterial, PerspectiveCamera, Points, PointsMaterial,
+  LineBasicMaterial, LineSegments, Matrix4, Mesh, NormalBlending, MeshBasicMaterial, PerspectiveCamera, Points, PointsMaterial,
   Quaternion, RingGeometry, Scene, SphereGeometry, Vector3, WebGLRenderer,
 } from "three";
 
+// The four scene colours come from the page theme (--scene-a, -b, -c, -warm in theme.css), see applyPalette() below.
+// Names are kept from the first night version: OCEAN = main colour, JADE = second, WHITE = third.
 const OCEAN = new Color(0x00d3fb);
 const JADE = new Color(0x83fd80);
 const WHITE = new Color(0xffffff);
@@ -112,7 +114,34 @@ export function createScene(canvas, options = {}) {
   helix.rotation.z = 0.32;
   scene.add(helix);
 
+  // ---------- theme colours ----------
+  // Reads the colour tokens of the current theme. Dark themes glow (additive blending), the light theme uses normal
+  // blending, because glowing white on ivory would be invisible.
+  function applyPalette() {
+    const css = getComputedStyle(document.documentElement);
+    const read = (name, fallback) => { try { return new Color((css.getPropertyValue(name) || "").trim() || fallback); } catch (err) { return new Color(fallback); } };
+    OCEAN.copy(read("--scene-a", "#00d3fb"));
+    JADE.copy(read("--scene-b", "#83fd80"));
+    WHITE.copy(read("--scene-c", "#ffffff"));
+    WARM.copy(read("--scene-warm", "#ff5a7a"));
+    light = (css.getPropertyValue("--scene-light") || "0").trim() === "1";
+    const blend = light ? NormalBlending : AdditiveBlending;
+    for (const mat of [pMat, rungMat, ...rings.map((r) => r.material)]) { mat.blending = blend; mat.needsUpdate = true; }
+    for (let i = 0; i < COUNT; i++) {
+      tmp.copy(i % 20 < 11 ? OCEAN : i % 20 < 17 ? JADE : WHITE);
+      col.set([tmp.r, tmp.g, tmp.b], i * 3);
+    }
+    pGeo.attributes.color.needsUpdate = true;
+    for (let i = 0; i < STEPS; i++) {
+      beads.setColorAt(i * 2, i % 3 === 0 ? JADE : OCEAN);
+      beads.setColorAt(i * 2 + 1, i % 3 === 0 ? OCEAN : WHITE);
+    }
+    if (beads.instanceColor) beads.instanceColor.needsUpdate = true;
+    rungMat.color.copy(OCEAN);
+  }
+
   // ---------- state ----------
+  let light = false;
   let mode = "intro";
   let energy = 0;          // 0 calm .. 1 loud (voice, bursts)
   let burstLevel = 0;      // a short burst that fades by itself
@@ -165,7 +194,7 @@ export function createScene(canvas, options = {}) {
       if (arr[i * 3 + 1] > 11) arr[i * 3 + 1] = -11;
     }
     pGeo.attributes.position.needsUpdate = true;
-    pMat.opacity = 0.4 + energy * 0.4;
+    pMat.opacity = (light ? 0.55 : 0.4) + energy * 0.4;
 
     // sound rings breathe slowly, and ripple outwards when there is sound
     const rate = 0.16 + energy * 0.7;
@@ -173,7 +202,7 @@ export function createScene(canvas, options = {}) {
       const phase = (t * rate + i / RING_COUNT) % 1;
       const s = 0.7 + phase * (2.6 + energy * 2.2);
       ring.scale.set(s, s, 1);
-      ring.material.opacity = (1 - phase) * (0.18 + energy * 0.4) * view.ringAlpha;
+      ring.material.opacity = (1 - phase) * (0.18 + energy * 0.4) * (light ? 1.7 : 1) * view.ringAlpha;
       ring.material.color.copy(i % 2 ? OCEAN : JADE).lerp(WARM, warm);
     });
     ringGroup.position.set(view.x * 0.6, view.y * 0.6, view.z);
@@ -183,8 +212,8 @@ export function createScene(canvas, options = {}) {
     helix.scale.setScalar(view.scale);
     helix.position.set(view.x, view.y, view.z);
     sphereMat.opacity = 0.9 * view.alpha;
-    rungMat.opacity = 0.35 * view.alpha;
-    rungMat.color.set(0x00d3fb).lerp(WARM, warm);
+    rungMat.opacity = (light ? 0.5 : 0.35) * view.alpha;
+    rungMat.color.copy(OCEAN).lerp(WARM, warm);
 
     // gentle parallax from the pointer or the tilt of the phone
     camera.position.x += (pointer.x * 1.2 - camera.position.x) * Math.min(1, dt * 2);
@@ -198,7 +227,9 @@ export function createScene(canvas, options = {}) {
     pointer.y = -(e.clientY / window.innerHeight - 0.5) * 2;
   }, { passive: true });
   window.addEventListener("resize", resize);
+  document.addEventListener("lz:theme", applyPalette);
   resize();
+  applyPalette();
 
   return {
     start() {
