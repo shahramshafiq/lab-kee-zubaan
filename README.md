@@ -1,137 +1,145 @@
+<div align="center">
+
 # Lab Kee Zubaan
 
-**Lab reports in plain words, safe by design.** Built for the Tech Fusion '26 AI Hackathon, Challenge B (Medical Lab Report Explainer).
+Lab reports explained in plain English or Urdu. Rules decide every result, the AI only writes the words.
 
-A patient or a family caregiver opens a lab report and gets: each result marked normal, low, high or urgent; a simple explanation of what every test measures; 3 to 5 questions to ask the doctor; and a short spoken summary they can listen to. They can then ask questions about the report by typing or by voice.
+![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat-square&logo=docker&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-670%2B-2ea44f?style=flat-square)
 
-## Why it is different from pasting a report into a chatbot
+</div>
 
-1. **Code decides the facts, the AI only writes the words.** A rules engine reads the lab's own files and classifies every value. The same report always gives the same answer.
-2. **The AI is checked.** Any explanation that contains a number that is not in the facts, or sounds like a diagnosis, is thrown away and a plain rules-based text is shown instead. So the app still works when the AI is slow, down or wrong.
-3. **Privacy is built in.** Name and record number are removed before anything is sent to the AI. A conversation is locked to one report and refuses questions about other patients.
-4. **It never guesses.** Missing age or sex: it asks. Unknown test or unit: "cannot be classified from the files". Every decision shows which file and line it came from.
-5. **Voice for people who do not want to read.** Short spoken summary, speech to text for questions, spoken answers, in English or Urdu.
+## Overview
 
-## Run it
+Most people cannot read their lab report, and a chatbot that guesses about health is dangerous. Lab Kee Zubaan ("the language of the lab") reads a report, marks every result normal, low, high or urgent using the lab's own reference files, explains each test in simple words, suggests questions for the doctor, and can read the summary aloud in English, Urdu or Roman Urdu. A rules engine decides every fact. The AI only writes the words, and a checker throws away any sentence with an invented number or a diagnosis.
 
-With Docker (one command):
+Built in one day for the Tech Fusion '26 AI Hackathon (AI Club, Bahria University Islamabad), Challenge B, by Shahram Shafiq and Sara Nasir.
+
+## Demo
+
+![Result page for a sample report with an urgent hemoglobin](docs/screenshot-results.png)
+
+Two sample reports are in [demo/](demo): a PDF and a photo of a printed report.
+
+## Key Features
+
+- **Many file types:** PDF (text and scanned), Word, Excel, CSV, HTML, RTF, text, and photos or screenshots of reports. Photos are read on the server with OCR, nothing is sent to an outside service.
+- **Safe by design:** the lab's rules classify every value (a value exactly on a limit is normal, urgent limits give a "see a doctor today" warning, the first doctor question is about the urgent result). It never diagnoses and refuses questions about other patients.
+- **Never guesses:** missing age or sex means it asks. A test with no range is "cannot be classified", and the page tells the patient to look for the range printed on their report, which they can type in and which is then marked as coming from them.
+- **Awkward reports handled:** units converted with the formula shown, names in other orders or with brackets, flags like "(L)" or "CRITICAL" ignored, "<10" and ">1000" on danger tests, "1,200", pending and blank results, duplicates and conflicts, ages in months.
+- **Voice and chat:** speech to text, spoken answers, and a chat locked to one report. Finished answers are remembered so a repeated question is instant.
+- **Three languages:** English, Urdu and Roman Urdu for the whole page, the answers and the voice.
+- **Privacy:** the patient name and record number are removed before anything is sent to the AI and never leave the server in a response.
+
+## Tech Stack
+
+| Area | Technology |
+|---|---|
+| Backend | Python 3.12, FastAPI, Uvicorn |
+| AI | Groq (gpt-oss models) with Gemini as fallback, called only from `app/llm.py` |
+| Speech | Groq Whisper (speech to text), edge-tts neural voices (text to speech) |
+| File reading | pypdf, openpyxl, rapidocr-onnxruntime |
+| Front end | Plain HTML, CSS and JavaScript, three.js background built with esbuild |
+| Packaging | Docker and Docker Compose |
+| Tests | pytest |
+
+## Project Structure
+
+```text
+app/             Backend modules
+  knowledge.py   Reads the lab's reference files and remembers the file and line
+  extract.py     Reads a report into a patient and a list of results
+  readfile.py    Turns any uploaded file into text (PDF, Word, Excel, photo and more)
+  units.py       Unit conversions shown as formulas
+  engine.py      Statuses, urgent limits, doctor questions
+  explain.py     AI-written words plus the checker and a cache
+  chat.py        Chat locked to one report, with a cache for finished answers
+  guard.py       Guardrails for diagnosis, medicine, other patients and attacks
+  llm.py         The only place that calls an AI service (retries, fallback, deadline)
+  voice.py       Speech to text and text to speech
+  plain_ur.py    Urdu texts written ahead of time
+  main.py        API routes
+static/          The web page, i18n.js holds the Urdu and Roman Urdu words
+tools/           Source of the 3D background and its build script
+lab_reports/     The lab's reference files and 14 sample reports
+demo/            Two sample reports for trying the app
+scripts/         smoke_test.py, latency_check.py, prewarm_demo.py
+tests/           Automated tests
+```
+
+## Getting Started
+
+### Prerequisites
+
+- Docker, or Python 3.12
+- Optional API keys for Groq and Gemini. Without keys the app still works with the rules-written text.
+
+### Installation
 
 ```bash
-cp .env.example .env     # then put your own keys in .env (the app also runs without keys, with rules text only)
+git clone https://github.com/shahramshafiq/lab-kee-zubaan.git
+cd lab-kee-zubaan
+cp .env.example .env
+```
+
+Put your own keys in `.env`. The main settings are `PROVIDER_ORDER`, `GROQ_API_KEY`, `GEMINI_API_KEY`, `GROQ_MODELS`, `GEMINI_MODELS`, `STRICT_DEMOGRAPHICS`, `TTS_VOICE_EN`, `TTS_VOICE_UR` and `DATA_DIR`. Every variable is listed in `.env.example`.
+
+### Run
+
+With Docker:
+
+```bash
 docker compose up --build
+```
+
+Without Docker:
+
+```bash
+python -m venv .venv
+.venv\Scripts\activate        # on Mac or Linux: source .venv/bin/activate
+pip install -r requirements-dev.txt
+uvicorn app.main:app --port 8000
 ```
 
 Open http://localhost:8000
 
-Without Docker (Python 3.10 or newer):
+## Usage
 
-```bash
-python -m venv .venv
-.venv\Scripts\activate            # on Mac or Linux: source .venv/bin/activate
-pip install -r requirements-dev.txt
-copy .env.example .env            # then edit .env
-uvicorn app.main:app --port 8000
-```
+- Drop a report on the page, or choose "Try an example", then press "Explain my report".
+- Press Listen for the spoken summary, or use the microphone to ask a question.
+- Check a running app with `python scripts/smoke_test.py --ai --voice`, and measure speed with `python scripts/latency_check.py`.
 
-Run the tests (they never call a real AI service):
+| Route | What it does |
+|---|---|
+| `POST /api/analyze` | Text or a sample report id gives results, explanation and doctor questions |
+| `POST /api/analyze-file` | The same for an uploaded file of any supported type |
+| `POST /api/explain` | The AI-written words for a report already analysed |
+| `POST /api/user-range` | The normal range typed by the patient for a test with no range |
+| `POST /api/chat`, `POST /api/chat-stream` | Questions locked to one report (the stream sends sentence by sentence) |
+| `POST /api/stt`, `POST /api/tts`, `GET /api/tts-stream` | Speech to text and text to speech |
+| `GET /api/health`, `/api/metrics`, `/api/usage`, `/api/demo-reports`, `/api/warmup` | Status, counters, AI budget, samples, warm-up |
+
+## Testing
 
 ```bash
 pytest
 ```
 
-## How it works
+The tests never call a real AI service. They cover all 14 lab reports, every file type, range and age edges, unit conversions, awkward lines, attacks hidden in a report or in chat, streaming, and the AI being down or returning nonsense.
 
-```
-report text -> clean filler -> extract demographics and results -> normalise names and units
-            -> rules engine (ranges by age and sex, urgent limits, edge rules)   <- the lab's reference files
-            -> remove name and record number
-            -> AI writes plain words (English, Urdu, Roman Urdu) -> checker (numbers, no diagnosis)
-            -> page: cards, doctor questions, spoken summary, locked chat
-```
+## Limitations and Roadmap
 
-| Part | File |
-|---|---|
-| Reads the lab's reference files, remembers file and line | `app/knowledge.py` |
-| Cleans a report and reads results in many layouts | `app/extract.py` |
-| Unit conversions, shown as a formula | `app/units.py` |
-| Statuses and the doctor questions | `app/engine.py` |
-| Only code that calls an AI service: retries, fallback between providers, deadline | `app/llm.py` |
-| Plain words plus the checker and a cache | `app/explain.py` |
-| Chat locked to one report | `app/chat.py` |
-| Question guardrails (other patients, diagnosis, medicine, attacks) | `app/guard.py` |
-| Speech to text (Whisper) and text to speech | `app/voice.py` |
-| Numbers and units as spoken words (English and Urdu) | `app/speakable.py` |
-| Urdu words written ahead of time (instant, works with the AI down) | `app/plain_ur.py` |
-| PDF text reading | `app/pdfread.py` |
-| AI calls, tokens, cost estimate and hourly budget | `app/usage.py` |
-| Request ids, counters (`/api/metrics`), rate limit | `app/observability.py` |
-| Routes | `app/main.py` |
+- The lab's files have ranges for only ten tests and only for ages 18 to 100. Anything else is "cannot be classified" on purpose.
+- Unit conversion factors are standard textbook values, because the lab files do not list them.
+- Photo reading depends on photo quality. Scanned reports should be sharp and straight.
+- The Urdu texts were not reviewed by a native speaker. The voice uses Microsoft's free neural voices through the unofficial `edge-tts` package, and the Urdu voice is slower than English.
+- Sessions live in memory, so one instance only, and there is no public deployment yet.
+- Next steps: WhatsApp delivery with a staff review for urgent results, and ranges for children.
 
-### API
+## Author
 
-| Route | What it does |
-|---|---|
-| `POST /api/analyze` | `{report_id` or `report_text, language, age?, sex?, use_ai?}` gives results, explanation, doctor questions, `session_id` |
-| `POST /api/analyze-file` | same, for an uploaded `.txt` or `.md` report |
-| `POST /api/chat` | `{session_id, message, language, voice?}` gives an answer locked to that report |
-| `POST /api/stt` | a recording gives text |
-| `POST /api/tts` | text gives audio (mp3) |
-| `POST /api/explain` | `{session_id, language, use_ai?}` the AI-written words for a report already analysed (the page shows the instant rules text first, then swaps these in) |
-| `GET /api/tts-stream` | the same audio, streamed so playback starts at the first chunk |
-| `GET /api/warmup` | called when the page opens: opens the AI connection and prepares a voice |
-| `GET /api/demo-reports`, `/api/health`, `/api/metrics`, `/api/usage` | samples, status, counters, AI calls and tokens used and calls left this hour |
+**Shahram Shafiq** - [GitHub](https://github.com/shahramshafiq) | [LinkedIn](https://www.linkedin.com/in/shahramshafiq/)
 
-Result statuses: `normal`, `low`, `high`, `urgent`, `cannot_classify`, `needs_demographics`.
-
-### The voice pipeline
-
-Microphone (recorded in the browser) -> `POST /api/stt` (Groq Whisper, about 0.2 s) -> our checked chat pipeline (about 0.5 to 1 s, quick model for spoken answers) -> the answer is rewritten for speaking (numbers and units as words, "twelve thousand cells per microliter") -> text to speech.
-
-- Text to speech uses Microsoft's neural voices through `edge-tts`, streamed and cached on disk. The short summary is requested as soon as the results appear, so pressing Listen starts at once.
-- Short chat answers use the device's own voice when it has the language (starts in milliseconds), and the server voice otherwise.
-- Measured on a development laptop: speech to text 0.2 s, AI answer 0.5 to 0.8 s, server voice first audio about 2 to 3 s (Urdu up to 4 s). The voice service dominates the delay, which is why the summary is prepared early and why a cloud host, a device voice, or the optional fast English voice (`TTS_ENGLISH_PROVIDER=groq`) feel faster. Run `python scripts/latency_check.py` to measure on your own machine.
-
-### Rules we follow (from the lab's own files)
-
-- A value exactly on a range limit is **normal**. Age limits are inclusive.
-- Missing age or sex: say the right range cannot be chosen and ask. Never guess from the name.
-- No matching range, or a unit that cannot be converted: "cannot be classified from the files".
-- Urgent values (hit or pass a dangerous limit) get a "see a doctor today" warning and questions first.
-- Never say a patient has a disease. Only a licensed doctor can diagnose.
-- Never discuss another patient.
-
-## Robustness
-
-Judged by tests, not by trust: about 100 automated tests cover all 14 lab reports, other ways of writing results, other units, every range edge, age edges, missing data, huge and garbage input, attacks hidden in a report, attacks in chat, and the AI being down or returning nonsense.
-
-## Known failure cases and limits (we would rather say them than hide them)
-
-- **Urgent limit wording.** The lab file says "hit or pass" but the table says "less than / greater than". We treat a value exactly on the limit as urgent (the safe side).
-- **Missing sex for a test that does not need it.** The lab rule says ask when age or sex is missing, so we ask even for tests where one range fits everyone. Set `STRICT_DEMOGRAPHICS=false` to ask only when needed.
-- **Unit conversion factors are standard textbook values** (for example glucose mmol/L x 18). The lab files do not list them.
-- **Ranges only exist for ages 18 to 100.** Children get "cannot be classified" until the lab supplies ranges.
-- **Tests with no range** (for example ferritin, kidney tests) are marked "cannot be classified", on purpose.
-- **Text, markdown and text-based PDF reports.** Scanned PDFs and photos have no text layer and need OCR (future work); the app says so clearly.
-- **The alias list is small** (the lab glossary plus a few common spellings). An unknown spelling is marked unclassified, not guessed.
-- **The AI chat answers are checked for invented numbers and diagnosis wording**, but not for every possible medical claim. Questions about diagnosis or medicine never reach the AI.
-- **Free AI plans have limits.** When they are slow or busy we show the rules text, which is correct but plainer.
-- **Voice.** Text to speech uses Microsoft's free neural voices through the `edge-tts` package (an unofficial service). If it fails, the page uses the browser's own voice. Roman Urdu is read with an English voice. Speech recognition of Urdu is good but not perfect, so the typed text is always shown.
-- **Sessions live in memory.** A restart clears them. One instance only.
-
-## Business idea in one paragraph
-
-Patients cannot read their results and labs spend call-centre time explaining them, while critical values need fast action. Lab Kee Zubaan is meant to be offered by a lab or hospital: the report goes out with a plain-language, voice-ready explanation in the patient's language, urgent results go to a staff member first, and the lab's own reference ranges decide the facts. Later phases: WhatsApp delivery with a staff review step for urgent results, PDF reading, and a lab-desk queue for critical values.
-
-## How this was built
-
-AI coding assistants helped write and review parts of the code. All behaviour is covered by tests, and the team reviewed and ran the result.
-
-## Layout
-
-```
-app/            backend code (see the table above)
-static/         the web page (HTML, CSS, JavaScript, no external libraries)
-lab_reports/    the lab's reference files and sample reports (from the organizers)
-tests/          automated tests
-Dockerfile, docker-compose.yml, .env.example
-```
+Built together with **Sara Nasir** - [GitHub](https://github.com/nasarara2541)
